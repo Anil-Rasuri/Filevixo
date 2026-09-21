@@ -25,6 +25,10 @@ interface ImageItem {
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "http://127.0.0.1:8000";
+
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -62,34 +66,47 @@ export default function ImagesToPdf({
   const [imagesPerPage, setImagesPerPage] =
     useState<ImagesPerPage>(4);
 
-  const [pageSize, setPageSize] = useState<PageSize>("A4");
+  const [pageSize, setPageSize] =
+    useState<PageSize>("A4");
 
   const [orientation, setOrientation] =
     useState<Orientation>("portrait");
 
-  const [margin, setMargin] = useState<Margin>("medium");
+  const [margin, setMargin] =
+    useState<Margin>("medium");
 
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] =
+    useState(false);
 
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [downloadName, setDownloadName] = useState(
-    "filevixo-images.pdf"
-  );
-  const [resultSize, setResultSize] = useState<number | null>(null);
+  const [downloadUrl, setDownloadUrl] =
+    useState("");
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const addMoreInputRef = useRef<HTMLInputElement | null>(null);
+  const [downloadName, setDownloadName] =
+    useState("filevixo-images.pdf");
+
+  const [resultSize, setResultSize] =
+    useState<number | null>(null);
+
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(null);
+
+  const addMoreInputRef =
+    useRef<HTMLInputElement | null>(null);
 
   const isBusy = loading || creating;
 
   useEffect(() => {
     return () => {
       images.forEach((image) => {
-        URL.revokeObjectURL(image.previewUrl);
+        URL.revokeObjectURL(
+          image.previewUrl
+        );
       });
 
       if (downloadUrl) {
-        URL.revokeObjectURL(downloadUrl);
+        URL.revokeObjectURL(
+          downloadUrl
+        );
       }
     };
   }, []);
@@ -112,7 +129,9 @@ export default function ImagesToPdf({
     return null;
   };
 
-  const addImages = (files: FileList | null) => {
+  const addImages = (
+    files: FileList | null
+  ) => {
     if (!files || files.length === 0) {
       return;
     }
@@ -131,31 +150,40 @@ export default function ImagesToPdf({
         (image) =>
           image.file.name === file.name &&
           image.file.size === file.size &&
-          image.file.lastModified === file.lastModified
+          image.file.lastModified ===
+            file.lastModified
       );
 
-      const duplicateInNewFiles = newImages.some(
-        (image) =>
-          image.file.name === file.name &&
-          image.file.size === file.size &&
-          image.file.lastModified === file.lastModified
-      );
+      const duplicateInNewFiles =
+        newImages.some(
+          (image) =>
+            image.file.name === file.name &&
+            image.file.size === file.size &&
+            image.file.lastModified ===
+              file.lastModified
+        );
 
-      if (duplicate || duplicateInNewFiles) {
+      if (
+        duplicate ||
+        duplicateInNewFiles
+      ) {
         return;
       }
 
       newImages.push({
         id: `${file.name}-${file.lastModified}-${Math.random()}`,
         file,
-        previewUrl: URL.createObjectURL(file),
+        previewUrl:
+          URL.createObjectURL(file),
       });
     });
 
     if (newImages.length > 0) {
-      setImages((current) => [...current, ...newImages]);
+      setImages((current) => [
+        ...current,
+        ...newImages,
+      ]);
 
-      // Clear old result when images change.
       clearResult();
     }
   };
@@ -164,7 +192,6 @@ export default function ImagesToPdf({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     addImages(event.target.files);
-
     event.target.value = "";
   };
 
@@ -172,21 +199,27 @@ export default function ImagesToPdf({
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     addImages(event.target.files);
-
     event.target.value = "";
   };
 
-  const removeImage = (id: string) => {
+  const removeImage = (
+    id: string
+  ) => {
     setImages((current) => {
-      const imageToRemove = current.find(
-        (image) => image.id === id
-      );
+      const imageToRemove =
+        current.find(
+          (image) => image.id === id
+        );
 
       if (imageToRemove) {
-        URL.revokeObjectURL(imageToRemove.previewUrl);
+        URL.revokeObjectURL(
+          imageToRemove.previewUrl
+        );
       }
 
-      return current.filter((image) => image.id !== id);
+      return current.filter(
+        (image) => image.id !== id
+      );
     });
 
     clearResult();
@@ -194,7 +227,9 @@ export default function ImagesToPdf({
 
   const clearAllImages = () => {
     images.forEach((image) => {
-      URL.revokeObjectURL(image.previewUrl);
+      URL.revokeObjectURL(
+        image.previewUrl
+      );
     });
 
     setImages([]);
@@ -205,24 +240,33 @@ export default function ImagesToPdf({
   const clearResult = () => {
     setDownloadUrl((currentUrl) => {
       if (currentUrl) {
-        URL.revokeObjectURL(currentUrl);
+        URL.revokeObjectURL(
+          currentUrl
+        );
       }
 
       return "";
     });
 
-    setDownloadName("filevixo-images.pdf");
+    setDownloadName(
+      "filevixo-images.pdf"
+    );
+
     setResultSize(null);
   };
 
   const handleCreatePdf = async () => {
     if (images.length === 0) {
-      onError("Please select at least one image.");
+      onError(
+        "Please select at least one image."
+      );
       return;
     }
 
     if (images.length > 100) {
-      onError("You can select up to 100 images at a time.");
+      onError(
+        "You can select up to 100 images at a time."
+      );
       return;
     }
 
@@ -230,24 +274,23 @@ export default function ImagesToPdf({
     onStart();
     onError("");
 
-    // Remove previous PDF.
     clearResult();
 
     try {
       const formData = new FormData();
 
       /*
-       * IMPORTANT:
-       * Send every image separately using the same "images" key.
+       * Send every image separately
+       * using the same "images" key.
        */
       images.forEach((image) => {
-        formData.append("images", image.file);
+        formData.append(
+          "images",
+          image.file
+        );
       });
 
       /*
-       * IMPORTANT:
-       * Send an actual integer.
-       *
        * 1 = one image on each PDF page
        * 2 = two images on each PDF page
        * 3 = three images on each PDF page
@@ -260,13 +303,18 @@ export default function ImagesToPdf({
         String(imagesPerPage)
       );
 
-      formData.append("page_size", pageSize);
+      formData.append(
+        "page_size",
+        pageSize
+      );
 
-      formData.append("orientation", orientation);
+      formData.append(
+        "orientation",
+        orientation
+      );
 
       /*
-       * IMPORTANT:
-       * Backend expects an INTEGER.
+       * Backend expects an integer.
        *
        * small  = 30
        * medium = 60
@@ -274,28 +322,36 @@ export default function ImagesToPdf({
        */
       formData.append(
         "margin",
-        String(getMarginPixels(margin))
+        String(
+          getMarginPixels(margin)
+        )
       );
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/images-to-pdf",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response =
+        await fetch(
+          `${API_URL}/api/images-to-pdf`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
 
       if (!response.ok) {
-        let message = "Failed to create PDF.";
+        let message =
+          "Failed to create PDF.";
 
         try {
-          const data = await response.json();
+          const data =
+            await response.json();
 
           if (data?.detail) {
             message =
-              typeof data.detail === "string"
+              typeof data.detail ===
+              "string"
                 ? data.detail
-                : JSON.stringify(data.detail);
+                : JSON.stringify(
+                    data.detail
+                  );
           }
         } catch {
           // Keep default error message.
@@ -304,16 +360,27 @@ export default function ImagesToPdf({
         throw new Error(message);
       }
 
-      const blob = await response.blob();
+      const blob =
+        await response.blob();
 
-      if (!blob || blob.size === 0) {
-        throw new Error("The server returned an empty PDF.");
+      if (
+        !blob ||
+        blob.size === 0
+      ) {
+        throw new Error(
+          "The server returned an empty PDF."
+        );
       }
 
-      const url = URL.createObjectURL(blob);
+      const url =
+        URL.createObjectURL(
+          blob
+        );
 
       setDownloadUrl(url);
-      setDownloadName("filevixo-images.pdf");
+      setDownloadName(
+        "filevixo-images.pdf"
+      );
       setResultSize(blob.size);
 
       if (onResult) {
@@ -336,38 +403,42 @@ export default function ImagesToPdf({
     }
   };
 
-  const getGridDescription = () => {
-    switch (imagesPerPage) {
-      case 1:
-        return "1 image on each page";
+  const getGridDescription =
+    () => {
+      switch (imagesPerPage) {
+        case 1:
+          return "1 image on each page";
 
-      case 2:
-        return "2 images on each page";
+        case 2:
+          return "2 images on each page";
 
-      case 3:
-        return "3 images on each page";
+        case 3:
+          return "3 images on each page";
 
-      case 4:
-        return "2 × 2 grid";
+        case 4:
+          return "2 × 2 grid";
 
-      case 6:
-        return "2 × 3 grid";
+        case 6:
+          return "2 × 3 grid";
 
-      case 9:
-        return "3 × 3 grid";
+        case 9:
+          return "3 × 3 grid";
 
-      default:
-        return `${imagesPerPage} images on each page`;
-    }
-  };
+        default:
+          return `${imagesPerPage} images on each page`;
+      }
+    };
 
-  const totalPages = Math.ceil(
-    images.length / imagesPerPage
-  );
+  const totalPages =
+    Math.ceil(
+      images.length /
+        imagesPerPage
+    );
 
   return (
     <div className="w-full">
       {/* Header */}
+
       <div className="mb-8">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">
           PDF Tool
@@ -384,6 +455,7 @@ export default function ImagesToPdf({
       </div>
 
       {/* Empty upload state */}
+
       {images.length === 0 && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 p-8 sm:p-12">
           <div className="mx-auto flex max-w-xl flex-col items-center text-center">
@@ -398,6 +470,7 @@ export default function ImagesToPdf({
                   stroke="currentColor"
                   strokeWidth="1.8"
                 />
+
                 <path
                   d="m7 16 3.2-3.5 2.3 2.3 1.8-2 2.7 3.2"
                   stroke="currentColor"
@@ -405,6 +478,7 @@ export default function ImagesToPdf({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
+
                 <circle
                   cx="9"
                   cy="8.5"
@@ -425,7 +499,9 @@ export default function ImagesToPdf({
             <button
               type="button"
               disabled={isBusy}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
               className="mt-6 inline-flex items-center justify-center rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Select Images
@@ -441,16 +517,20 @@ export default function ImagesToPdf({
               accept="image/jpeg,image/png,image/webp"
               multiple
               className="hidden"
-              onChange={handleMainFileChange}
+              onChange={
+                handleMainFileChange
+              }
             />
           </div>
         </div>
       )}
 
       {/* Selected images */}
+
       {images.length > 0 && (
         <div className="space-y-6">
           {/* Add more images */}
+
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 sm:p-8">
             <div className="flex flex-col items-center text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-orange-600">
@@ -468,6 +548,7 @@ export default function ImagesToPdf({
                     stroke="currentColor"
                     strokeWidth="1.8"
                   />
+
                   <path
                     d="M12 8v8M8 12h8"
                     stroke="currentColor"
@@ -507,12 +588,15 @@ export default function ImagesToPdf({
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 className="hidden"
-                onChange={handleAddMoreChange}
+                onChange={
+                  handleAddMoreChange
+                }
               />
             </div>
           </div>
 
           {/* Selected images list */}
+
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -522,14 +606,19 @@ export default function ImagesToPdf({
 
                 <p className="mt-1 text-sm text-slate-500">
                   {images.length}{" "}
-                  {images.length === 1 ? "image" : "images"} selected
+                  {images.length === 1
+                    ? "image"
+                    : "images"}{" "}
+                  selected
                 </p>
               </div>
 
               <button
                 type="button"
                 disabled={isBusy}
-                onClick={clearAllImages}
+                onClick={
+                  clearAllImages
+                }
                 className="self-start text-sm font-semibold text-red-600 transition hover:text-red-700 disabled:opacity-50 sm:self-auto"
               >
                 Clear all
@@ -537,62 +626,77 @@ export default function ImagesToPdf({
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {images.map((image, index) => (
-                <div
-                  key={image.id}
-                  className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
-                    <img
-                      src={image.previewUrl}
-                      alt={image.file.name}
-                      className="h-full w-full object-contain"
-                    />
+              {images.map(
+                (image, index) => (
+                  <div
+                    key={image.id}
+                    className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
+                      <img
+                        src={
+                          image.previewUrl
+                        }
+                        alt={
+                          image.file.name
+                        }
+                        className="h-full w-full object-contain"
+                      />
 
-                    <div className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-xs font-bold text-white">
-                      {index + 1}
+                      <div className="absolute left-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/80 text-xs font-bold text-white">
+                        {index + 1}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() =>
+                          removeImage(
+                            image.id
+                          )
+                        }
+                        aria-label={`Remove ${image.file.name}`}
+                        className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-red-500 shadow-sm transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          className="h-4 w-4"
+                        >
+                          <path
+                            d="M5 5l10 10M15 5 5 15"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => removeImage(image.id)}
-                      aria-label={`Remove ${image.file.name}`}
-                      className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-red-500 shadow-sm transition hover:bg-red-50 disabled:opacity-50"
-                    >
-                      <svg
-                        viewBox="0 0 20 20"
-                        fill="none"
-                        className="h-4 w-4"
+                    <div className="p-3">
+                      <p
+                        className="truncate text-sm font-semibold text-slate-800"
+                        title={
+                          image.file.name
+                        }
                       >
-                        <path
-                          d="M5 5l10 10M15 5 5 15"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
+                        {image.file.name}
+                      </p>
 
-                  <div className="p-3">
-                    <p
-                      className="truncate text-sm font-semibold text-slate-800"
-                      title={image.file.name}
-                    >
-                      {image.file.name}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      {formatFileSize(image.file.size)}
-                    </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {formatFileSize(
+                          image.file.size
+                        )}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           </div>
 
           {/* PDF settings */}
+
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-7">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-600">
@@ -611,36 +715,40 @@ export default function ImagesToPdf({
 
             <div className="mt-7 grid gap-7 lg:grid-cols-2">
               {/* Images per page */}
+
               <div>
                 <label className="text-sm font-bold text-slate-900">
                   Images per page
                 </label>
 
                 <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
-                  {[1, 2, 3, 4, 6, 9].map((value) => {
-                    const selected =
-                      imagesPerPage === value;
+                  {[1, 2, 3, 4, 6, 9].map(
+                    (value) => {
+                      const selected =
+                        imagesPerPage ===
+                        value;
 
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() =>
-                          setImagesPerPage(
-                            value as ImagesPerPage
-                          )
-                        }
-                        className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
-                          selected
-                            ? "border-orange-600 bg-orange-600 text-white shadow-sm"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        {value}
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() =>
+                            setImagesPerPage(
+                              value as ImagesPerPage
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                            selected
+                              ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {value}
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
 
                 <p className="mt-2 text-xs text-slate-400">
@@ -649,22 +757,31 @@ export default function ImagesToPdf({
               </div>
 
               {/* Page size */}
+
               <div>
                 <label className="text-sm font-bold text-slate-900">
                   Page size
                 </label>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {(["A4", "Letter"] as PageSize[]).map(
+                  {(
+                    ["A4", "Letter"] as PageSize[]
+                  ).map(
                     (value) => {
-                      const selected = pageSize === value;
+                      const selected =
+                        pageSize ===
+                        value;
 
                       return (
                         <button
                           key={value}
                           type="button"
                           disabled={isBusy}
-                          onClick={() => setPageSize(value)}
+                          onClick={() =>
+                            setPageSize(
+                              value
+                            )
+                          }
                           className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
                             selected
                               ? "border-orange-600 bg-orange-600 text-white shadow-sm"
@@ -680,6 +797,7 @@ export default function ImagesToPdf({
               </div>
 
               {/* Orientation */}
+
               <div>
                 <label className="text-sm font-bold text-slate-900">
                   Orientation
@@ -688,35 +806,50 @@ export default function ImagesToPdf({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {(
                     [
-                      ["portrait", "Portrait"],
-                      ["landscape", "Landscape"],
+                      [
+                        "portrait",
+                        "Portrait",
+                      ],
+                      [
+                        "landscape",
+                        "Landscape",
+                      ],
                     ] as const
-                  ).map(([value, label]) => {
-                    const selected =
-                      orientation === value;
+                  ).map(
+                    ([
+                      value,
+                      label,
+                    ]) => {
+                      const selected =
+                        orientation ===
+                        value;
 
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() =>
-                          setOrientation(value)
-                        }
-                        className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
-                          selected
-                            ? "border-orange-600 bg-orange-600 text-white shadow-sm"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() =>
+                            setOrientation(
+                              value
+                            )
+                          }
+                          className={`rounded-xl border px-4 py-3 text-sm font-semibold transition ${
+                            selected
+                              ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
               </div>
 
               {/* Margin */}
+
               <div>
                 <label className="text-sm font-bold text-slate-900">
                   Page margin
@@ -725,35 +858,56 @@ export default function ImagesToPdf({
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {(
                     [
-                      ["small", "Small"],
-                      ["medium", "Medium"],
-                      ["large", "Large"],
+                      [
+                        "small",
+                        "Small",
+                      ],
+                      [
+                        "medium",
+                        "Medium",
+                      ],
+                      [
+                        "large",
+                        "Large",
+                      ],
                     ] as const
-                  ).map(([value, label]) => {
-                    const selected = margin === value;
+                  ).map(
+                    ([
+                      value,
+                      label,
+                    ]) => {
+                      const selected =
+                        margin ===
+                        value;
 
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => setMargin(value)}
-                        className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
-                          selected
-                            ? "border-orange-600 bg-orange-600 text-white shadow-sm"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() =>
+                            setMargin(
+                              value
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                            selected
+                              ? "border-orange-600 bg-orange-600 text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50"
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    }
+                  )}
                 </div>
               </div>
             </div>
           </div>
 
           {/* Create PDF */}
+
           <div className="overflow-hidden rounded-2xl bg-slate-950 shadow-xl">
             <div className="flex flex-col gap-6 p-6 sm:p-7 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -763,27 +917,41 @@ export default function ImagesToPdf({
 
                 <h3 className="mt-2 text-xl font-bold text-white">
                   {images.length}{" "}
-                  {images.length === 1 ? "image" : "images"} → PDF
+                  {images.length ===
+                  1
+                    ? "image"
+                    : "images"}{" "}
+                  → PDF
                 </h3>
 
                 <p className="mt-2 text-sm text-slate-400">
                   {pageSize} ·{" "}
-                  {orientation === "portrait"
+                  {orientation ===
+                  "portrait"
                     ? "Portrait"
                     : "Landscape"}{" "}
-                  · {imagesPerPage} images per page · {margin}{" "}
-                  margin
+                  ·{" "}
+                  {imagesPerPage}{" "}
+                  images per page ·{" "}
+                  {margin} margin
                 </p>
 
                 <p className="mt-2 text-xs text-slate-500">
-                  Expected PDF pages: {totalPages}
+                  Expected PDF pages:{" "}
+                  {totalPages}
                 </p>
               </div>
 
               <button
                 type="button"
-                disabled={isBusy || images.length === 0}
-                onClick={handleCreatePdf}
+                disabled={
+                  isBusy ||
+                  images.length ===
+                    0
+                }
+                onClick={
+                  handleCreatePdf
+                }
                 className="inline-flex shrink-0 items-center justify-center gap-3 rounded-xl bg-orange-600 px-7 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBusy ? (
@@ -801,6 +969,7 @@ export default function ImagesToPdf({
                         strokeWidth="3"
                         opacity="0.3"
                       />
+
                       <path
                         d="M21 12a9 9 0 0 0-9-9"
                         stroke="currentColor"
@@ -837,37 +1006,53 @@ export default function ImagesToPdf({
           </div>
 
           {/* Result */}
-          {downloadUrl && resultSize !== null && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-bold text-emerald-800">
-                    PDF created successfully.
-                  </p>
 
-                  <p className="mt-1 text-sm text-emerald-700">
-                    Output size:{" "}
-                    {formatFileSize(resultSize)}
-                  </p>
+          {downloadUrl &&
+            resultSize !== null && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-bold text-emerald-800">
+                      PDF created successfully.
+                    </p>
 
-                  <p className="mt-1 text-xs text-emerald-600">
-                    {images.length} images ·{" "}
-                    {imagesPerPage} images per page ·{" "}
-                    {totalPages} PDF{" "}
-                    {totalPages === 1 ? "page" : "pages"}
-                  </p>
+                    <p className="mt-1 text-sm text-emerald-700">
+                      Output size:{" "}
+                      {formatFileSize(
+                        resultSize
+                      )}
+                    </p>
+
+                    <p className="mt-1 text-xs text-emerald-600">
+                      {images.length}{" "}
+                      images ·{" "}
+                      {
+                        imagesPerPage
+                      }{" "}
+                      images per page ·{" "}
+                      {totalPages}{" "}
+                      PDF{" "}
+                      {totalPages ===
+                      1
+                        ? "page"
+                        : "pages"}
+                    </p>
+                  </div>
+
+                  <a
+                    href={
+                      downloadUrl
+                    }
+                    download={
+                      downloadName
+                    }
+                    className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+                  >
+                    Download PDF
+                  </a>
                 </div>
-
-                <a
-                  href={downloadUrl}
-                  download={downloadName}
-                  className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
-                >
-                  Download PDF
-                </a>
               </div>
-            </div>
-          )}
+            )}
         </div>
       )}
     </div>

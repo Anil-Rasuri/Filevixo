@@ -60,16 +60,10 @@ function App() {
   const downloadUrlRef =
     useRef("");
 
-  /*
-   * Keep object URL ref updated
-   */
   useEffect(() => {
     downloadUrlRef.current = downloadUrl;
   }, [downloadUrl]);
 
-  /*
-   * Clean object URL when app unmounts
-   */
   useEffect(() => {
     return () => {
       if (downloadUrlRef.current) {
@@ -80,9 +74,6 @@ function App() {
     };
   }, []);
 
-  /*
-   * Clear previous result
-   */
   const clearResult = () => {
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(
@@ -98,9 +89,6 @@ function App() {
     setResultMessage("");
   };
 
-  /*
-   * Reset workspace
-   */
   const resetWorkspace = () => {
     clearResult();
 
@@ -109,9 +97,6 @@ function App() {
     setError("");
   };
 
-  /*
-   * File selection for image tools
-   */
   const handleFileSelect = (
     file: File | undefined
   ) => {
@@ -153,16 +138,10 @@ function App() {
     setSelectedFile(file);
   };
 
-  /*
-   * Remove selected file
-   */
   const handleRemoveFile = () => {
     resetWorkspace();
   };
 
-  /*
-   * Select tool and scroll to workspace
-   */
   const chooseTool = (
     nextMode: ToolMode
   ) => {
@@ -180,9 +159,6 @@ function App() {
         return;
       }
 
-      /*
-       * Navbar height + small visual gap.
-       */
       const navbarOffset = 76;
 
       const top =
@@ -198,9 +174,6 @@ function App() {
     }, 50);
   };
 
-  /*
-   * Start processing
-   */
   const handleStart = () => {
     clearResult();
 
@@ -208,9 +181,6 @@ function App() {
     setError("");
   };
 
-  /*
-   * Successful result
-   */
   const handleResult = (
     url: string,
     name: string,
@@ -237,9 +207,6 @@ function App() {
     }, 150);
   };
 
-  /*
-   * Processing error
-   */
   const handleError = (
     message: string
   ) => {
@@ -247,9 +214,6 @@ function App() {
     setLoading(false);
   };
 
-  /*
-   * Tool title
-   */
   const getToolTitle = () => {
     switch (mode) {
       case "compress":
@@ -284,20 +248,11 @@ function App() {
     }
   };
 
-  /*
-   * Generic image upload tools
-   */
   const isImageTool =
     mode === "compress" ||
     mode === "convert" ||
     mode === "resize" ||
     mode === "crop";
-
-  /*
-   * ========================================================
-   * ICONS
-   * ========================================================
-   */
 
   const compressIcon = (
     <svg
@@ -572,22 +527,12 @@ function App() {
     </svg>
   );
 
-  /*
-   * ========================================================
-   * UI
-   * ========================================================
-   */
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
 
       <Navbar />
 
       <main>
-
-        {/* ==================================================
-            HERO
-        ================================================== */}
 
         <section className="px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-12">
           <div className="mx-auto max-w-5xl text-center">
@@ -607,17 +552,11 @@ function App() {
           </div>
         </section>
 
-        {/* ==================================================
-            TOOLS
-        ================================================== */}
-
         <section
           id="tools"
           className="px-4 pb-10 sm:px-6 sm:pb-14"
         >
           <div className="mx-auto max-w-7xl">
-
-            {/* IMAGE TOOLS */}
 
             <div className="mb-7">
 
@@ -680,8 +619,6 @@ function App() {
               </div>
             </div>
 
-            {/* DOCUMENT TOOLS */}
-
             <div className="mb-7">
 
               <div className="mb-3">
@@ -721,8 +658,6 @@ function App() {
               </div>
             </div>
 
-            {/* AI TOOLS */}
-
             <div className="mb-7">
 
               <div className="mb-3">
@@ -752,8 +687,6 @@ function App() {
 
               </div>
             </div>
-
-            {/* PDF TOOLS */}
 
             <div>
 
@@ -799,10 +732,6 @@ function App() {
           </div>
         </section>
 
-        {/* ==================================================
-            WORKSPACE
-        ================================================== */}
-
         <section
           id="workspace"
           className={`
@@ -821,10 +750,6 @@ function App() {
         >
           <div className="mx-auto max-w-4xl">
 
-            {/* ----------------------------------------------
-                GENERIC WORKSPACE HEADING
-            ---------------------------------------------- */}
-
             {mode !== "remove-background" && (
               <div className="mb-4 text-center sm:mb-5">
 
@@ -839,10 +764,6 @@ function App() {
               </div>
             )}
 
-            {/* ----------------------------------------------
-                IMAGE UPLOAD
-            ---------------------------------------------- */}
-
             {isImageTool && (
               <div className="mb-3">
                 <UploadBox
@@ -856,10 +777,6 @@ function App() {
                 />
               </div>
             )}
-
-            {/* ----------------------------------------------
-                COMPRESS IMAGE
-            ---------------------------------------------- */}
 
             {mode === "compress" && (
               <CompressImage
@@ -881,10 +798,6 @@ function App() {
                 onError={handleError}
               />
             )}
-
-            {/* ----------------------------------------------
-                CONVERT IMAGE
-            ---------------------------------------------- */}
 
             {mode === "convert" && (
               <ConvertImage
@@ -912,10 +825,6 @@ function App() {
               />
             )}
 
-            {/* ----------------------------------------------
-                RESIZE IMAGE
-            ---------------------------------------------- */}
-
             {mode === "resize" && (
               <ResizeImage
                 selectedFile={selectedFile}
@@ -936,10 +845,6 @@ function App() {
                 onError={handleError}
               />
             )}
-
-            {/* ----------------------------------------------
-                CROP IMAGE
-            ---------------------------------------------- */}
 
             {mode === "crop" && (
               <CropImage
@@ -962,12 +867,7 @@ function App() {
               />
             )}
 
-            {/* ----------------------------------------------
-                REMOVE BACKGROUND
-            ---------------------------------------------- */}
-
-            {mode ===
-              "remove-background" && (
+            {mode === "remove-background" && (
               <RemoveBackground
                 selectedFile={selectedFile}
                 loading={loading}
@@ -979,12 +879,9 @@ function App() {
               />
             )}
 
-            {/* ----------------------------------------------
-                IMAGES TO PDF
-            ---------------------------------------------- */}
-
             {mode === "images-to-pdf" && (
               <ImagesToPdf
+                loading={loading}
                 onStart={handleStart}
                 onResult={(
                   url,
@@ -1003,10 +900,6 @@ function App() {
                 onError={handleError}
               />
             )}
-
-            {/* ----------------------------------------------
-                WORD TO PDF
-            ---------------------------------------------- */}
 
             {mode === "word-to-pdf" && (
               <WordToPDF
@@ -1028,10 +921,6 @@ function App() {
               />
             )}
 
-            {/* ----------------------------------------------
-                PDF TO WORD
-            ---------------------------------------------- */}
-
             {mode === "pdf-to-word" && (
               <PDFToWord
                 onResult={(
@@ -1051,10 +940,6 @@ function App() {
                 onError={handleError}
               />
             )}
-
-            {/* ----------------------------------------------
-                MERGE PDF
-            ---------------------------------------------- */}
 
             {mode === "merge-pdf" && (
               <MergePDF
@@ -1076,21 +961,11 @@ function App() {
               />
             )}
 
-            {/* ----------------------------------------------
-                ERROR
-            ---------------------------------------------- */}
-
             {error && (
               <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
                 {error}
               </div>
             )}
-
-            {/* ----------------------------------------------
-                GENERIC RESULT
-                Crop / Remove Background / Merge PDF
-                manage their own result UI.
-            ---------------------------------------------- */}
 
             {downloadUrl &&
               downloadName &&
@@ -1121,10 +996,6 @@ function App() {
 
           </div>
         </section>
-
-        {/* ==================================================
-            HOW IT WORKS
-        ================================================== */}
 
         <section
           id="how-it-works"
@@ -1191,10 +1062,6 @@ function App() {
           </div>
         </section>
 
-        {/* ==================================================
-            SECURITY
-        ================================================== */}
-
         <section
           id="security"
           className="bg-slate-950 px-4 py-12 text-white sm:px-6 sm:py-16"
@@ -1240,10 +1107,6 @@ function App() {
         </section>
 
       </main>
-
-      {/* ====================================================
-          FOOTER
-      ==================================================== */}
 
       <footer className="border-t border-slate-200 bg-white px-4 py-8 sm:px-6">
 

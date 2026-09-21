@@ -10,6 +10,10 @@ interface PDFToWordProps {
   onError?: (message: string) => void;
 }
 
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "http://127.0.0.1:8000";
+
 export default function PDFToWord({
   onResult,
   onError,
@@ -92,7 +96,7 @@ export default function PDFToWord({
       formData.append("file", file);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/pdf-to-word",
+        `${API_URL}/api/pdf-to-word`,
         {
           method: "POST",
           body: formData,
@@ -293,7 +297,6 @@ export default function PDFToWord({
         {/* Selected file */}
         {file && !resultUrl && (
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
-
             <div className="flex items-center gap-3">
 
               {/* PDF icon */}
@@ -402,7 +405,6 @@ export default function PDFToWord({
         {resultUrl && (
           <div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center sm:p-6">
-
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
                 <svg
                   viewBox="0 0 24 24"

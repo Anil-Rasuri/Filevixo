@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import ReactCrop, {
   centerCrop,
   makeAspectCrop,
@@ -366,11 +367,6 @@ export default function CropImage({
       preset.label
     );
 
-    /*
-     * Let React update selectedPreset
-     * first, then apply the crop.
-     */
-
     requestAnimationFrame(() => {
       applyPresetToImage(
         preset
@@ -614,6 +610,7 @@ export default function CropImage({
         );
 
       link.href = url;
+
       link.download =
         fileName;
 
@@ -683,21 +680,17 @@ export default function CropImage({
 
   return (
     <div className="mt-5 sm:mt-6">
-
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.7fr)_320px]">
 
-        {/* =================================================
-            IMAGE PREVIEW
-        ================================================= */}
+        {/* IMAGE PREVIEW */}
 
         <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3 sm:p-4">
-
           <div className="flex min-h-[360px] items-center justify-center overflow-hidden rounded-xl bg-slate-950 p-2 sm:min-h-[420px]">
 
             <ReactCrop
               crop={crop}
               onChange={(
-                newCrop,
+                _,
                 percentCrop
               ) => {
                 setCrop(
@@ -718,7 +711,6 @@ export default function CropImage({
               keepSelection
               ruleOfThirds
             >
-
               <img
                 src={imageUrl}
                 alt="Crop preview"
@@ -727,21 +719,16 @@ export default function CropImage({
                 }
                 className="block max-h-[420px] max-w-full object-contain"
               />
-
             </ReactCrop>
 
           </div>
-
         </div>
 
-        {/* =================================================
-            SETTINGS
-        ================================================= */}
+        {/* SETTINGS */}
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
 
           <div className="mb-4">
-
             <h3 className="text-base font-bold text-slate-950">
               Crop Image
             </h3>
@@ -749,21 +736,16 @@ export default function CropImage({
             <p className="mt-1 text-xs leading-5 text-slate-500">
               Select a ratio or use a custom crop.
             </p>
-
           </div>
 
-          {/* =================================================
-              ASPECT RATIO
-          ================================================= */}
+          {/* ASPECT RATIO */}
 
           <div>
-
             <label className="mb-2 block text-xs font-semibold text-slate-700">
               Aspect Ratio
             </label>
 
             <div className="grid grid-cols-2 gap-2">
-
               {presets.map(
                 (preset) => {
                   const active =
@@ -797,19 +779,14 @@ export default function CropImage({
                   );
                 }
               )}
-
             </div>
-
           </div>
 
-          {/* =================================================
-              CUSTOM
-          ================================================= */}
+          {/* CUSTOM */}
 
           {selectedPreset ===
             "Custom" && (
             <div className="mt-4">
-
               <label className="mb-2 block text-xs font-semibold text-slate-700">
                 Custom Ratio
               </label>
@@ -849,13 +826,10 @@ export default function CropImage({
                 />
 
               </div>
-
             </div>
           )}
 
-          {/* =================================================
-              BUTTONS
-          ================================================= */}
+          {/* BUTTONS */}
 
           <div className="mt-6 grid grid-cols-2 gap-3">
 
@@ -883,11 +857,8 @@ export default function CropImage({
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-
                   Cropping...
-
                 </span>
               ) : (
                 "Apply & Download"
@@ -901,9 +872,7 @@ export default function CropImage({
           </p>
 
         </div>
-
       </div>
-
     </div>
   );
 }

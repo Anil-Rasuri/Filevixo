@@ -10,6 +10,10 @@ interface MergePDFProps {
   onError?: (message: string) => void;
 }
 
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "http://127.0.0.1:8000";
+
 export default function MergePDF({
   onResult,
   onError,
@@ -203,7 +207,7 @@ export default function MergePDF({
       });
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/merge-pdf",
+        `${API_URL}/api/merge-pdf`,
         {
           method: "POST",
           body: formData,

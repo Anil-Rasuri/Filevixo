@@ -21,6 +21,10 @@ export default function CompressImage({
 }: CompressImageProps) {
   const [selectedTarget, setSelectedTarget] = useState(500);
 
+  const API_URL =
+    import.meta.env.VITE_API_URL ??
+    "http://127.0.0.1:8000";
+
   const sizes: [number, string][] = [
     [100, "100 KB"],
     [200, "200 KB"],
@@ -48,7 +52,7 @@ export default function CompressImage({
       );
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/compress-image",
+        `${API_URL}/api/compress-image`,
         {
           method: "POST",
           body: formData,

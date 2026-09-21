@@ -9,14 +9,18 @@ interface ResizeImageProps {
     name: string,
     size: number
   ) => void;
-  onError: (message: unknown) => void;
+  onError: (message: string) => void;
 }
 
 type Unit = "px" | "inch" | "cm" | "mm" | "%";
+
 type ResizeMode = "auto" | "scale" | "fixed";
+
 type OutputFormat = "jpg" | "png" | "webp";
 
-const API_URL = "http://127.0.0.1:8000/api/resize-image";
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "http://127.0.0.1:8000";
 
 const MAX_DIMENSION = 10000;
 
@@ -95,11 +99,15 @@ function cleanNumber(value: number): string {
     return "";
   }
 
-  if (Math.abs(value - Math.round(value)) < 0.01) {
+  if (
+    Math.abs(value - Math.round(value)) < 0.01
+  ) {
     return String(Math.round(value));
   }
 
-  return value.toFixed(2).replace(/\.?0+$/, "");
+  return value
+    .toFixed(2)
+    .replace(/\.?0+$/, "");
 }
 
 function clampDimension(value: number): number {
@@ -113,10 +121,14 @@ export default function ResizeImage({
   onResult,
   onError,
 }: ResizeImageProps) {
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewUrl, setPreviewUrl] =
+    useState("");
 
-  const [originalWidth, setOriginalWidth] = useState(0);
-  const [originalHeight, setOriginalHeight] = useState(0);
+  const [originalWidth, setOriginalWidth] =
+    useState(0);
+
+  const [originalHeight, setOriginalHeight] =
+    useState(0);
 
   const [resizeMode, setResizeMode] =
     useState<ResizeMode>("fixed");
@@ -151,7 +163,6 @@ export default function ResizeImage({
   /*
    * LOAD IMAGE
    */
-
   useEffect(() => {
     if (!selectedFile) {
       setPreviewUrl("");
@@ -166,7 +177,6 @@ export default function ResizeImage({
       setOutputFormat("jpg");
       setMaxFileSize("");
       setError("");
-
       return;
     }
 
@@ -216,7 +226,6 @@ export default function ResizeImage({
   /*
    * CURRENT OUTPUT PIXELS
    */
-
   const outputPixels = useMemo(() => {
     const widthNumber = Number(width);
     const heightNumber = Number(height);
@@ -249,7 +258,6 @@ export default function ResizeImage({
   /*
    * PREVIEW
    */
-
   const previewSize = useMemo(() => {
     if (
       !outputPixels.width ||
@@ -290,7 +298,6 @@ export default function ResizeImage({
   /*
    * WIDTH CHANGE
    */
-
   const handleWidthChange = (
     value: string
   ) => {
@@ -345,7 +352,6 @@ export default function ResizeImage({
   /*
    * HEIGHT CHANGE
    */
-
   const handleHeightChange = (
     value: string
   ) => {
@@ -399,11 +405,7 @@ export default function ResizeImage({
 
   /*
    * UNIT CHANGE
-   *
-   * Convert the CURRENT dimensions to pixels first,
-   * then convert those pixels into the new unit.
    */
-
   const handleUnitChange = (
     newUnit: Unit
   ) => {
@@ -463,11 +465,7 @@ export default function ResizeImage({
 
   /*
    * DPI CHANGE
-   *
-   * Physical units depend on DPI.
-   * Pixels and percentage do not.
    */
-
   const handleDpiChange = (
     value: string
   ) => {
@@ -492,11 +490,6 @@ export default function ResizeImage({
       setDpi(value);
       return;
     }
-
-    /*
-     * If using physical units, preserve
-     * the current pixel dimensions when DPI changes.
-     */
 
     if (
       unit === "inch" ||
@@ -554,10 +547,8 @@ export default function ResizeImage({
   /*
    * ASPECT RATIO
    */
-
   const toggleAspectRatio = () => {
-    const next =
-      !lockAspect;
+    const next = !lockAspect;
 
     setLockAspect(next);
 
@@ -624,7 +615,6 @@ export default function ResizeImage({
   /*
    * RESIZE MODE
    */
-
   const changeResizeMode = (
     mode: ResizeMode
   ) => {
@@ -675,7 +665,6 @@ export default function ResizeImage({
   /*
    * RESIZE
    */
-
   const handleResize = async () => {
     setError("");
 
@@ -727,13 +716,9 @@ export default function ResizeImage({
     }
 
     /*
-     * IMPORTANT:
-     *
-     * Always convert the selected unit
-     * into actual pixel dimensions before
-     * sending to the backend.
+     * Convert selected unit into
+     * actual pixel dimensions.
      */
-
     const widthPixels =
       clampDimension(
         convertToPixels(
@@ -801,9 +786,8 @@ export default function ResizeImage({
       );
 
       /*
-       * SEND PIXELS TO BACKEND
+       * Backend receives pixels.
        */
-
       formData.append(
         "width",
         String(widthPixels)
@@ -820,10 +804,9 @@ export default function ResizeImage({
       );
 
       /*
-       * Keep unit information for
-       * compatibility with the backend.
+       * Keep compatibility with
+       * the backend API.
        */
-
       formData.append(
         "unit",
         "px"
@@ -854,10 +837,13 @@ export default function ResizeImage({
       }
 
       const response =
-        await fetch(API_URL, {
-          method: "POST",
-          body: formData,
-        });
+        await fetch(
+          `${API_URL}/api/resize-image`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
 
       if (!response.ok) {
         let message =
@@ -899,7 +885,11 @@ export default function ResizeImage({
         blob.size
       );
     } catch (error) {
-      onError(error);
+      onError(
+        error instanceof Error
+          ? error.message
+          : "Resize failed."
+      );
     }
   };
 
@@ -917,6 +907,7 @@ export default function ResizeImage({
     <div className="mt-5 sm:mt-6">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="grid lg:grid-cols-[minmax(0,1fr)_390px]">
+
           {/* PREVIEW */}
 
           <div className="border-b border-slate-200 lg:border-b-0 lg:border-r">
@@ -1008,6 +999,7 @@ export default function ResizeImage({
             </div>
 
             <div className="grid grid-cols-2 border-t border-slate-200">
+
               <div className="px-5 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   Original
@@ -1040,12 +1032,14 @@ export default function ResizeImage({
                   pixels
                 </p>
               </div>
+
             </div>
           </div>
 
           {/* SETTINGS */}
 
           <div className="bg-white">
+
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-base font-bold text-slate-950">
                 Resize settings
@@ -1057,6 +1051,7 @@ export default function ResizeImage({
             </div>
 
             <div className="space-y-4 p-5">
+
               {/* DIMENSIONS */}
 
               <div>
@@ -1097,6 +1092,7 @@ export default function ResizeImage({
                 </div>
 
                 <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+
                   <div>
                     <label className="mb-1 block text-[11px] font-semibold text-slate-600">
                       Width {unit}
@@ -1134,6 +1130,7 @@ export default function ResizeImage({
                       className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
+
                 </div>
 
                 {/* ASPECT RATIO */}
@@ -1283,6 +1280,7 @@ export default function ResizeImage({
                 </div>
 
                 <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+
                   <div>
                     <label className="mb-1 block text-[11px] font-semibold text-slate-600">
                       DPI
@@ -1330,6 +1328,7 @@ export default function ResizeImage({
                       </span>
                     </div>
                   </div>
+
                 </div>
               </div>
 
@@ -1365,8 +1364,10 @@ export default function ResizeImage({
                   "Resize Image"
                 )}
               </button>
+
             </div>
           </div>
+
         </div>
       </div>
     </div>

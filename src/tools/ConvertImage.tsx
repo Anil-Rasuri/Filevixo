@@ -23,6 +23,11 @@ export default function ConvertImage({
 }: ConvertImageProps) {
   const [isConverting, setIsConverting] = useState(false);
 
+  // Backend API URL
+  const API_URL =
+    import.meta.env.VITE_API_URL ??
+    "http://127.0.0.1:8000";
+
   const handleConvert = async () => {
     console.log("CONVERT BUTTON CLICKED");
 
@@ -45,7 +50,7 @@ export default function ConvertImage({
       console.log("Sending request to backend...");
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/convert-image",
+        `${API_URL}/api/convert-image`,
         {
           method: "POST",
           body: formData,
@@ -72,10 +77,15 @@ export default function ConvertImage({
 
       const blob = await response.blob();
 
-      console.log("Conversion successful. Size:", blob.size);
+      console.log(
+        "Conversion successful. Size:",
+        blob.size
+      );
 
       if (!blob.size) {
-        throw new Error("The server returned an empty file.");
+        throw new Error(
+          "The server returned an empty file."
+        );
       }
 
       const url = URL.createObjectURL(blob);
@@ -104,7 +114,8 @@ export default function ConvertImage({
     ["webp", "WEBP"],
   ];
 
-  const currentlyConverting = isConverting || loading;
+  const currentlyConverting =
+    isConverting || loading;
 
   const selectedFormatLabel =
     outputFormat === "jpg"
@@ -123,7 +134,8 @@ export default function ConvertImage({
       {/* Format Buttons */}
       <div className="grid grid-cols-3 gap-3">
         {formats.map(([value, label]) => {
-          const isSelected = outputFormat === value;
+          const isSelected =
+            outputFormat === value;
 
           return (
             <button
@@ -171,8 +183,10 @@ export default function ConvertImage({
       {currentlyConverting && (
         <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-center">
           <p className="text-sm font-medium text-blue-700">
-            Converting your image to {selectedFormatLabel}...
+            Converting your image to{" "}
+            {selectedFormatLabel}...
           </p>
+
           <p className="mt-1 text-xs text-blue-500">
             Please wait while Filevixo processes your image.
           </p>

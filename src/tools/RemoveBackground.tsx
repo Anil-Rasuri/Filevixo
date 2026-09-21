@@ -8,6 +8,10 @@ interface RemoveBackgroundProps {
   onError: (message: string) => void;
 }
 
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  "http://127.0.0.1:8000";
+
 export default function RemoveBackground({
   selectedFile,
   loading,
@@ -32,6 +36,7 @@ export default function RemoveBackground({
     }
 
     const url = URL.createObjectURL(selectedFile);
+
     setPreviewUrl(url);
 
     return () => {
@@ -55,7 +60,9 @@ export default function RemoveBackground({
     ];
 
     if (!allowedTypes.includes(file.type)) {
-      onError("Please select a JPG, PNG, or WebP image.");
+      onError(
+        "Please select a JPG, PNG, or WebP image."
+      );
       return false;
     }
 
@@ -119,7 +126,7 @@ export default function RemoveBackground({
       formData.append("file", selectedFile);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/remove-background",
+        `${API_URL}/api/remove-background`,
         {
           method: "POST",
           body: formData,
@@ -145,7 +152,9 @@ export default function RemoveBackground({
       const blob = await response.blob();
 
       if (!blob.size) {
-        throw new Error("The server returned an empty image.");
+        throw new Error(
+          "The server returned an empty image."
+        );
       }
 
       const url = URL.createObjectURL(blob);
@@ -212,6 +221,7 @@ export default function RemoveBackground({
 
   return (
     <div className="mx-auto w-full max-w-5xl">
+
       {/* Header */}
       <div className="mb-8 text-center">
         <div className="mb-3 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">
@@ -251,6 +261,7 @@ export default function RemoveBackground({
           }`}
         >
           <div className="flex min-h-[300px] flex-col items-center justify-center text-center sm:min-h-[360px]">
+
             <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
               <svg
                 viewBox="0 0 24 24"
@@ -308,8 +319,10 @@ export default function RemoveBackground({
       {/* Uploaded Image */}
       {selectedFile && !resultUrl && (
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+
           <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-950">
                   {selectedFile.name}
@@ -381,8 +394,10 @@ export default function RemoveBackground({
       {/* Result */}
       {selectedFile && resultUrl && (
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+
           <div className="border-b border-slate-200 px-5 py-4 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
               <div>
                 <p className="text-sm font-bold text-slate-950">
                   Background removed
@@ -482,7 +497,9 @@ export default function RemoveBackground({
                 max="100"
                 value={sliderPosition}
                 onChange={(event) =>
-                  setSliderPosition(Number(event.target.value))
+                  setSliderPosition(
+                    Number(event.target.value)
+                  )
                 }
                 aria-label="Compare original and background removed image"
                 className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
@@ -493,6 +510,7 @@ export default function RemoveBackground({
           {/* Result actions */}
           <div className="border-t border-slate-200 p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row">
+
               <button
                 type="button"
                 onClick={handleDownload}
