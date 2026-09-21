@@ -1,7 +1,8 @@
 from pathlib import Path
 from typing import List, Optional
-from threading import Lock
+from threading import Lock, Semaphore
 
+import gc
 import io
 import os
 import shutil
@@ -117,6 +118,10 @@ MAX_PDF_SIZE = 25 * 1024 * 1024
 MAX_MERGE_FILES = 20
 MAX_TOTAL_MERGE_SIZE = 100 * 1024 * 1024
 
+# Keep memory-heavy PDF/image-AI requests bounded on small servers.
+MAX_IMAGES_TO_PDF = 20
+MAX_TOTAL_IMAGES_TO_PDF_SIZE = 50 * 1024 * 1024
+
 # Protect against extremely large decompressed images.
 Image.MAX_IMAGE_PIXELS = 40_000_000
 
@@ -137,18 +142,18 @@ Image.MAX_IMAGE_PIXELS = 40_000_000
 
 REMOVE_BG_MODEL = os.getenv(
     "REMOVE_BG_MODEL",
-    "birefnet-general-lite",
+    "u2netp",
 ).strip()
 
 try:
     REMOVE_BG_MAX_DIMENSION = int(
         os.getenv(
             "REMOVE_BG_MAX_DIMENSION",
-            "2500",
+            "1400",
         )
     )
 except ValueError:
-    REMOVE_BG_MAX_DIMENSION = 2500
+    REMOVE_BG_MAX_DIMENSION = 1400
 
 REMOVE_BG_MAX_DIMENSION = max(
     500,
@@ -160,6 +165,7 @@ REMOVE_BG_MAX_DIMENSION = max(
 
 remove_bg_session = None
 remove_bg_lock = Lock()
+remove_bg_processing = Semaphore(1)
 
 
 def get_remove_bg_session():
@@ -1194,6 +1200,15 @@ async def images_to_pdf(
             ),
         )
 
+    if len(uploaded_files) > MAX_IMAGES_TO_PDF:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"You can convert a maximum of "
+                f"{MAX_IMAGES_TO_PDF} images at once."
+            ),
+        )
+
     if images_per_page not in {
         1,
         2,
@@ -1283,35 +1298,42 @@ async def images_to_pdf(
 
     if images_per_page == 1:
         rows, columns = 1, 1
-
     elif images_per_page == 2:
         rows, columns = 2, 1
-
     elif images_per_page == 3:
         rows, columns = 3, 1
-
     elif images_per_page == 4:
         rows, columns = 2, 2
-
     elif images_per_page == 6:
         rows, columns = 2, 3
-
     else:
         rows, columns = 3, 3
 
-    cell_width = (
-        usable_width / columns
-    )
+    cell_width = usable_width / columns
+    cell_height = usable_height / rows
 
-    cell_height = (
-        usable_height / rows
-    )
-
-    image_objects = []
     output_path = None
+    total_input_size = 0
 
     try:
-        for uploaded_file in uploaded_files:
+        output_path = get_unique_output_path(
+            "pdf",
+            "filevixo-images",
+        )
+
+        pdf = canvas.Canvas(
+            str(output_path),
+            pagesize=(
+                page_width,
+                page_height,
+            ),
+        )
+
+        pdf.setTitle(
+            "Filevixo Images PDF"
+        )
+
+        for index, uploaded_file in enumerate(uploaded_files):
             content_type = (
                 uploaded_file.content_type
                 or ""
@@ -1323,9 +1345,7 @@ async def images_to_pdf(
             ).lower()
 
             if (
-                not content_type.startswith(
-                    "image/"
-                )
+                not content_type.startswith("image/")
                 and not filename.endswith(
                     (
                         ".jpg",
@@ -1348,149 +1368,113 @@ async def images_to_pdf(
                 MAX_IMAGE_SIZE,
             )
 
-            image_objects.append(
-                open_image_from_bytes(
-                    data
+            total_input_size += len(data)
+
+            if total_input_size > MAX_TOTAL_IMAGES_TO_PDF_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "The total image upload size "
+                        "is limited to 50 MB."
+                    ),
                 )
-            )
 
-        output_path = get_unique_output_path(
-            "pdf",
-            "filevixo-images",
-        )
+            image = None
+            rgb_image = None
+            image_buffer = None
 
-        pdf = canvas.Canvas(
-            str(output_path),
-            pagesize=(
-                page_width,
-                page_height,
-            ),
-        )
+            try:
+                image = open_image_from_bytes(data)
 
-        pdf.setTitle(
-            "Filevixo Images PDF"
-        )
-
-        for index, image in enumerate(
-            image_objects
-        ):
-            position_on_page = (
-                index
-                % images_per_page
-            )
-
-            if (
-                position_on_page == 0
-                and index > 0
-            ):
-                pdf.showPage()
-
-            row = (
-                position_on_page
-                // columns
-            )
-
-            column = (
-                position_on_page
-                % columns
-            )
-
-            cell_x = (
-                margin_value
-                + column * cell_width
-            )
-
-            cell_y = (
-                page_height
-                - margin_value
-                - (row + 1)
-                * cell_height
-            )
-
-            scale = min(
-                (
-                    cell_width - 16
+                position_on_page = (
+                    index % images_per_page
                 )
-                / image.width,
-                (
-                    cell_height - 16
+
+                if (
+                    position_on_page == 0
+                    and index > 0
+                ):
+                    pdf.showPage()
+
+                row = position_on_page // columns
+                column = position_on_page % columns
+
+                cell_x = (
+                    margin_value
+                    + column * cell_width
                 )
-                / image.height,
-            )
 
-            draw_width = (
-                image.width
-                * scale
-            )
-
-            draw_height = (
-                image.height
-                * scale
-            )
-
-            draw_x = (
-                cell_x
-                + (
-                    cell_width
-                    - draw_width
+                cell_y = (
+                    page_height
+                    - margin_value
+                    - (row + 1) * cell_height
                 )
-                / 2
-            )
 
-            draw_y = (
-                cell_y
-                + (
-                    cell_height
-                    - draw_height
+                scale = min(
+                    (cell_width - 16) / image.width,
+                    (cell_height - 16) / image.height,
                 )
-                / 2
-            )
 
-            image_buffer = io.BytesIO()
+                draw_width = image.width * scale
+                draw_height = image.height * scale
 
-            rgb_image = normalize_image(
-                image
-            )
+                draw_x = (
+                    cell_x
+                    + (cell_width - draw_width) / 2
+                )
 
-            rgb_image.save(
-                image_buffer,
-                format="JPEG",
-                quality=90,
-            )
+                draw_y = (
+                    cell_y
+                    + (cell_height - draw_height) / 2
+                )
 
-            image_buffer.seek(0)
+                rgb_image = normalize_image(image)
 
-            pdf.drawImage(
-                ImageReader(
-                    image_buffer
-                ),
-                draw_x,
-                draw_y,
-                width=draw_width,
-                height=draw_height,
-                preserveAspectRatio=True,
-                mask="auto",
-            )
+                image_buffer = io.BytesIO()
 
-            rgb_image.close()
-            image_buffer.close()
+                rgb_image.save(
+                    image_buffer,
+                    format="JPEG",
+                    quality=85,
+                    optimize=True,
+                )
+
+                image_buffer.seek(0)
+
+                pdf.drawImage(
+                    ImageReader(image_buffer),
+                    draw_x,
+                    draw_y,
+                    width=draw_width,
+                    height=draw_height,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+
+            finally:
+                if image_buffer is not None:
+                    image_buffer.close()
+                if rgb_image is not None:
+                    rgb_image.close()
+                if image is not None:
+                    image.close()
+
+                del data
+                gc.collect()
 
         pdf.showPage()
         pdf.save()
+        del pdf
+        gc.collect()
 
     except HTTPException:
         if output_path:
-            delete_file(
-                str(output_path)
-            )
-
+            delete_file(str(output_path))
         raise
 
     except Exception as error:
         if output_path:
-            delete_file(
-                str(output_path)
-            )
+            delete_file(str(output_path))
 
         raise HTTPException(
             status_code=500,
@@ -1501,11 +1485,7 @@ async def images_to_pdf(
         )
 
     finally:
-        for image in image_objects:
-            try:
-                image.close()
-            except Exception:
-                pass
+        gc.collect()
 
     background_tasks.add_task(
         delete_file,
@@ -1883,35 +1863,45 @@ async def remove_background(
 
     validate_image_upload(file)
 
-    data = await read_uploaded_bytes(
-        file,
-        MAX_IMAGE_SIZE,
-    )
+    # Only one AI inference at a time. This is important on Render Free,
+    # where several simultaneous model runs can exceed the 512 MB limit.
+    acquired = remove_bg_processing.acquire(timeout=5)
 
-    image = open_image_from_bytes(
-        data
-    )
+    if not acquired:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Background removal is busy. "
+                "Please try again in a few seconds."
+            ),
+        )
 
-    working_image = image
+    data = None
+    image = None
+    working_image = None
     output_image = None
+    output_path = None
 
     try:
+        data = await read_uploaded_bytes(
+            file,
+            MAX_IMAGE_SIZE,
+        )
+
+        image = open_image_from_bytes(data)
+        working_image = image
+
         if working_image.mode not in (
             "RGB",
             "RGBA",
         ):
-            converted = working_image.convert(
-                "RGBA"
-            )
-
+            converted = working_image.convert("RGBA")
             working_image.close()
-
             working_image = converted
+            image = None
 
-        resized_image = (
-            resize_for_background_removal(
-                working_image
-            )
+        resized_image = resize_for_background_removal(
+            working_image
         )
 
         if resized_image is not working_image:
@@ -1929,17 +1919,49 @@ async def remove_background(
                 ),
             )
 
+        # Avoid the extra post-processing/decontamination passes on the
+        # 512 MB Render instance. The smaller u2netp model is used by default.
         output_image = rembg_remove(
             working_image,
             session=session,
-            post_process_mask=True,
-            decontaminate=True,
+            post_process_mask=False,
+            decontaminate=False,
+        )
+
+        if output_image is None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Background removal did not "
+                    "produce an output image."
+                ),
+            )
+
+        if output_image.mode != "RGBA":
+            converted = output_image.convert("RGBA")
+            output_image.close()
+            output_image = converted
+
+        output_path = get_unique_output_path(
+            "png",
+            "filevixo-background-removed",
+        )
+
+        output_image.save(
+            output_path,
+            format="PNG",
+            optimize=True,
         )
 
     except HTTPException:
+        if output_path:
+            delete_file(str(output_path))
         raise
 
     except Exception as error:
+        if output_path:
+            delete_file(str(output_path))
+
         print(
             "[Filevixo] Background removal error: "
             f"{error}"
@@ -1954,59 +1976,27 @@ async def remove_background(
         )
 
     finally:
-        try:
-            working_image.close()
-        except Exception:
-            pass
+        if output_image is not None:
+            try:
+                output_image.close()
+            except Exception:
+                pass
 
-    if output_image is None:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Background removal did not "
-                "produce an output image."
-            ),
-        )
+        if working_image is not None:
+            try:
+                working_image.close()
+            except Exception:
+                pass
 
-    if output_image.mode != "RGBA":
-        converted = output_image.convert(
-            "RGBA"
-        )
+        if image is not None:
+            try:
+                image.close()
+            except Exception:
+                pass
 
-        output_image.close()
-
-        output_image = converted
-
-    output_path = get_unique_output_path(
-        "png",
-        "filevixo-background-removed",
-    )
-
-    try:
-        output_image.save(
-            output_path,
-            format="PNG",
-            optimize=True,
-        )
-
-    except Exception as error:
-        delete_file(
-            str(output_path)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Could not save background "
-                f"removed image: {error}"
-            ),
-        )
-
-    finally:
-        try:
-            output_image.close()
-        except Exception:
-            pass
+        del data
+        gc.collect()
+        remove_bg_processing.release()
 
     background_tasks.add_task(
         delete_file,
@@ -2016,9 +2006,7 @@ async def remove_background(
     return FileResponse(
         path=output_path,
         media_type="image/png",
-        filename=(
-            "filevixo-background-removed.png"
-        ),
+        filename="filevixo-background-removed.png",
     )
 
 
