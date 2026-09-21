@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import List, Optional
+from threading import Lock
+
 import io
 import os
 import shutil
@@ -17,7 +19,6 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-
 from PIL import Image
 
 
@@ -50,7 +51,6 @@ try:
     from rembg import new_session, remove as rembg_remove
 
     REMBG_AVAILABLE = True
-
 except ImportError:
     new_session = None
     rembg_remove = None
@@ -71,12 +71,22 @@ app = FastAPI(
 # CORS
 # ============================================================
 
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "",
+).strip().rstrip("/")
+
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+if FRONTEND_URL:
+    ALLOWED_ORIGINS.append(FRONTEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -102,43 +112,97 @@ TEMP_DIR.mkdir(
 # ============================================================
 
 MAX_IMAGE_SIZE = 25 * 1024 * 1024
-
 MAX_PDF_SIZE = 25 * 1024 * 1024
 
 MAX_MERGE_FILES = 20
-
 MAX_TOTAL_MERGE_SIZE = 100 * 1024 * 1024
 
+# Protect against extremely large decompressed images.
+Image.MAX_IMAGE_PIXELS = 40_000_000
+
 
 # ============================================================
-# BACKGROUND REMOVAL MODEL
+# BACKGROUND REMOVAL
 # ============================================================
 
-REMOVE_BG_MODEL = "birefnet-general"
+# Render Free has limited RAM.
+#
+# The lighter model is used by default.
+#
+# You can later change this through an environment variable:
+#
+# REMOVE_BG_MODEL=birefnet-general
+#
+# when using a larger server.
+
+REMOVE_BG_MODEL = os.getenv(
+    "REMOVE_BG_MODEL",
+    "birefnet-general-lite",
+).strip()
+
+try:
+    REMOVE_BG_MAX_DIMENSION = int(
+        os.getenv(
+            "REMOVE_BG_MAX_DIMENSION",
+            "2500",
+        )
+    )
+except ValueError:
+    REMOVE_BG_MAX_DIMENSION = 2500
+
+REMOVE_BG_MAX_DIMENSION = max(
+    500,
+    min(
+        REMOVE_BG_MAX_DIMENSION,
+        5000,
+    ),
+)
 
 remove_bg_session = None
+remove_bg_lock = Lock()
 
-if REMBG_AVAILABLE:
 
-    try:
+def get_remove_bg_session():
+    """
+    Load the rembg model only when the background-removal
+    endpoint is actually used.
 
-        remove_bg_session = new_session(
-            REMOVE_BG_MODEL
-        )
+    This avoids loading a large AI model during normal
+    application startup.
+    """
 
-        print(
-            f"[Filevixo] Background removal model loaded: "
-            f"{REMOVE_BG_MODEL}"
-        )
+    global remove_bg_session
 
-    except Exception as error:
+    if not REMBG_AVAILABLE:
+        return None
 
-        remove_bg_session = None
+    if remove_bg_session is not None:
+        return remove_bg_session
 
-        print(
-            "[Filevixo] Background removal model "
-            f"could not be loaded: {error}"
-        )
+    with remove_bg_lock:
+        if remove_bg_session is None:
+            print(
+                "[Filevixo] Loading background removal model: "
+                f"{REMOVE_BG_MODEL}"
+            )
+
+            try:
+                remove_bg_session = new_session(
+                    REMOVE_BG_MODEL
+                )
+            except Exception as error:
+                print(
+                    "[Filevixo] Background removal model "
+                    f"could not be loaded: {error}"
+                )
+                raise
+
+            print(
+                "[Filevixo] Background removal model ready: "
+                f"{REMOVE_BG_MODEL}"
+            )
+
+    return remove_bg_session
 
 
 # ============================================================
@@ -149,6 +213,9 @@ def get_unique_output_path(
     extension: str,
     prefix: str = "filevixo-output",
 ) -> Path:
+    """
+    Generate a unique temporary output filename.
+    """
 
     filename = (
         f"{prefix}-{uuid.uuid4().hex}.{extension}"
@@ -160,19 +227,78 @@ def get_unique_output_path(
 def delete_file(
     path: str,
 ) -> None:
+    """
+    Safely delete a temporary file.
+    """
 
     try:
-
         file_path = Path(path)
 
         if file_path.exists():
-
             file_path.unlink()
 
     except Exception as error:
-
         print(
-            f"[Filevixo] Could not delete file: {error}"
+            "[Filevixo] Could not delete file: "
+            f"{error}"
+        )
+
+
+def delete_directory(
+    path: str | Path,
+) -> None:
+    """
+    Safely delete a temporary directory.
+    """
+
+    try:
+        directory = Path(path)
+
+        if directory.exists():
+            shutil.rmtree(
+                directory,
+                ignore_errors=True,
+            )
+
+    except Exception as error:
+        print(
+            "[Filevixo] Could not delete directory: "
+            f"{error}"
+        )
+
+
+def cleanup_old_temp_files() -> None:
+    """
+    Remove leftover temporary files/directories.
+
+    This is useful after a server restart or crashed request.
+    """
+
+    try:
+        if not TEMP_DIR.exists():
+            return
+
+        for item in TEMP_DIR.iterdir():
+            try:
+                if item.is_file():
+                    item.unlink()
+
+                elif item.is_dir():
+                    shutil.rmtree(
+                        item,
+                        ignore_errors=True,
+                    )
+
+            except Exception as error:
+                print(
+                    "[Filevixo] Could not clean "
+                    f"{item}: {error}"
+                )
+
+    except Exception as error:
+        print(
+            "[Filevixo] Temporary cleanup failed: "
+            f"{error}"
         )
 
 
@@ -180,21 +306,26 @@ async def read_uploaded_bytes(
     file: UploadFile,
     max_size: int,
 ) -> bytes:
+    """
+    Read an uploaded file and enforce a maximum size.
+    """
 
     data = await file.read()
 
     if not data:
-
         raise HTTPException(
             status_code=400,
             detail="Uploaded file is empty.",
         )
 
     if len(data) > max_size:
-
         raise HTTPException(
             status_code=413,
-            detail="File is too large.",
+            detail=(
+                f"File is too large. "
+                f"Maximum allowed size is "
+                f"{max_size // (1024 * 1024)} MB."
+            ),
         )
 
     return data
@@ -203,9 +334,11 @@ async def read_uploaded_bytes(
 def open_image_from_bytes(
     data: bytes,
 ) -> Image.Image:
+    """
+    Safely open an image from uploaded bytes.
+    """
 
     try:
-
         image = Image.open(
             io.BytesIO(data)
         )
@@ -214,8 +347,19 @@ def open_image_from_bytes(
 
         return image
 
-    except Exception:
+    except Image.DecompressionBombError:
+        raise HTTPException(
+            status_code=400,
+            detail="Image dimensions are too large.",
+        )
 
+    except Image.DecompressionBombWarning:
+        raise HTTPException(
+            status_code=400,
+            detail="Image dimensions are too large.",
+        )
+
+    except Exception:
         raise HTTPException(
             status_code=400,
             detail="Invalid or unsupported image file.",
@@ -225,60 +369,63 @@ def open_image_from_bytes(
 def normalize_image(
     image: Image.Image,
 ) -> Image.Image:
+    """
+    Convert an image to RGB while preserving transparency
+    correctly against a white background when needed.
+    """
 
     if image.mode in (
         "RGBA",
         "LA",
     ):
+        rgba_image = (
+            image.convert("RGBA")
+            if image.mode != "RGBA"
+            else image
+        )
 
         background = Image.new(
             "RGB",
-            image.size,
+            rgba_image.size,
             "white",
         )
 
-        if image.mode == "LA":
-
-            image = image.convert(
-                "RGBA"
-            )
-
         background.paste(
-            image,
-            mask=image.getchannel("A"),
+            rgba_image,
+            mask=rgba_image.getchannel("A"),
         )
+
+        if rgba_image is not image:
+            rgba_image.close()
 
         return background
 
     if image.mode == "P":
-
-        return image.convert(
-            "RGB"
-        )
+        return image.convert("RGB")
 
     if image.mode != "RGB":
-
-        return image.convert(
-            "RGB"
-        )
+        return image.convert("RGB")
 
     return image
 
 
 def find_libreoffice() -> Optional[str]:
+    """
+    Find LibreOffice on Windows or Linux/Render.
+    """
 
     candidates = [
+        # Linux / Render
+        "/usr/bin/soffice",
+        "/usr/local/bin/soffice",
 
+        # Windows
         r"C:\Program Files\LibreOffice\program\soffice.exe",
-
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-
     ]
 
     for candidate in candidates:
-
         if os.path.exists(candidate):
-
             return candidate
 
     system_path = shutil.which(
@@ -286,10 +433,114 @@ def find_libreoffice() -> Optional[str]:
     )
 
     if system_path:
-
         return system_path
 
     return None
+
+
+def resize_for_background_removal(
+    image: Image.Image,
+) -> Image.Image:
+    """
+    Reduce very large images before AI processing
+    to reduce memory usage.
+    """
+
+    max_dimension = max(
+        image.width,
+        image.height,
+    )
+
+    if max_dimension <= REMOVE_BG_MAX_DIMENSION:
+        return image
+
+    ratio = (
+        REMOVE_BG_MAX_DIMENSION
+        / max_dimension
+    )
+
+    new_size = (
+        max(
+            1,
+            int(image.width * ratio),
+        ),
+        max(
+            1,
+            int(image.height * ratio),
+        ),
+    )
+
+    print(
+        "[Filevixo] Resizing background-removal input "
+        f"from {image.size} to {new_size}"
+    )
+
+    return image.resize(
+        new_size,
+        Image.Resampling.LANCZOS,
+    )
+
+
+def validate_image_upload(
+    file: UploadFile,
+) -> None:
+    """
+    Basic upload validation.
+    """
+
+    content_type = (
+        file.content_type or ""
+    ).lower()
+
+    filename = (
+        file.filename or ""
+    ).lower()
+
+    supported_extensions = (
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+    )
+
+    if (
+        not content_type.startswith("image/")
+        and not filename.endswith(
+            supported_extensions
+        )
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Please upload a JPG, PNG, "
+                "or WebP image."
+            ),
+        )
+
+
+def validate_pdf_upload(
+    file: UploadFile,
+) -> None:
+    """
+    Basic PDF upload validation.
+    """
+
+    content_type = (
+        file.content_type or ""
+    ).lower()
+
+    filename = (
+        file.filename or ""
+    ).lower()
+
+    if (
+        content_type != "application/pdf"
+        and not filename.endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a PDF file.",
+        )
 
 
 # ============================================================
@@ -298,10 +549,10 @@ def find_libreoffice() -> Optional[str]:
 
 @app.get("/")
 async def root():
-
     return {
         "name": "Filevixo API",
         "status": "running",
+        "version": "1.0.0",
     }
 
 
@@ -311,13 +562,29 @@ async def root():
 
 @app.get("/health")
 async def health():
+    """
+    Render health-check endpoint.
+
+    The background model is intentionally lazy-loaded,
+    so "available" is a healthy state.
+    """
+
+    if not REMBG_AVAILABLE:
+        background_status = "unavailable"
+
+    elif remove_bg_session is not None:
+        background_status = "ready"
+
+    else:
+        background_status = "available"
 
     return {
         "status": "ok",
-        "background_removal": (
-            "ready"
-            if remove_bg_session is not None
-            else "unavailable"
+        "background_removal": background_status,
+        "background_model": (
+            REMOVE_BG_MODEL
+            if REMBG_AVAILABLE
+            else None
         ),
     }
 
@@ -332,18 +599,7 @@ async def compress_image(
     file: UploadFile = File(...),
     quality: int = Form(80),
 ):
-
-    if (
-        not file.content_type
-        or not file.content_type.startswith(
-            "image/"
-        )
-    ):
-
-        raise HTTPException(
-            status_code=400,
-            detail="Please upload an image.",
-        )
+    validate_image_upload(file)
 
     data = await read_uploaded_bytes(
         file,
@@ -354,26 +610,26 @@ async def compress_image(
         data
     )
 
-    image = normalize_image(
-        image
-    )
-
-    quality = max(
-        1,
-        min(
-            95,
-            quality,
-        ),
-    )
-
+    normalized = None
     output_path = get_unique_output_path(
         "jpg",
         "filevixo-compressed",
     )
 
     try:
+        normalized = normalize_image(
+            image
+        )
 
-        image.save(
+        quality = max(
+            1,
+            min(
+                95,
+                quality,
+            ),
+        )
+
+        normalized.save(
             output_path,
             format="JPEG",
             quality=quality,
@@ -381,23 +637,29 @@ async def compress_image(
         )
 
     except Exception as error:
+        delete_file(
+            str(output_path)
+        )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Image compression failed: {error}"
+                "Image compression failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         try:
-
             image.close()
-
         except Exception:
-
             pass
+
+        if normalized is not None:
+            try:
+                normalized.close()
+            except Exception:
+                pass
 
     background_tasks.add_task(
         delete_file,
@@ -421,6 +683,7 @@ async def convert_image(
     file: UploadFile = File(...),
     output_format: str = Form("png"),
 ):
+    validate_image_upload(file)
 
     allowed_formats = {
         "jpg": "JPEG",
@@ -432,7 +695,6 @@ async def convert_image(
     output_format = output_format.lower()
 
     if output_format not in allowed_formats:
-
         raise HTTPException(
             status_code=400,
             detail="Unsupported output format.",
@@ -447,25 +709,25 @@ async def convert_image(
         data
     )
 
+    processed_image = image
+
+    output_format_name = output_format
+
     if output_format in (
         "jpg",
         "jpeg",
     ):
-
-        image = normalize_image(
+        processed_image = normalize_image(
             image
         )
 
-    else:
-
-        if image.mode not in (
-            "RGB",
-            "RGBA",
-        ):
-
-            image = image.convert(
-                "RGBA"
-            )
+    elif image.mode not in (
+        "RGB",
+        "RGBA",
+    ):
+        processed_image = image.convert(
+            "RGBA"
+        )
 
     extension = (
         "jpg"
@@ -482,10 +744,9 @@ async def convert_image(
     )
 
     try:
-
         save_kwargs = {
             "format": allowed_formats[
-                output_format
+                output_format_name
             ],
         }
 
@@ -493,38 +754,38 @@ async def convert_image(
             "jpg",
             "jpeg",
         ):
+            save_kwargs["quality"] = 90
+            save_kwargs["optimize"] = True
 
-            save_kwargs[
-                "quality"
-            ] = 90
-
-            save_kwargs[
-                "optimize"
-            ] = True
-
-        image.save(
+        processed_image.save(
             output_path,
             **save_kwargs,
         )
 
     except Exception as error:
+        delete_file(
+            str(output_path)
+        )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Image conversion failed: {error}"
+                "Image conversion failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         try:
-
-            image.close()
-
+            processed_image.close()
         except Exception:
-
             pass
+
+        if processed_image is not image:
+            try:
+                image.close()
+            except Exception:
+                pass
 
     background_tasks.add_task(
         delete_file,
@@ -559,9 +820,9 @@ async def resize_image(
     output_format: str = Form("jpg"),
     dpi: int = Form(96),
 ):
+    validate_image_upload(file)
 
     if width <= 0 or height <= 0:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -571,7 +832,6 @@ async def resize_image(
         )
 
     if width > 10000 or height > 10000:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -579,6 +839,14 @@ async def resize_image(
                 "are 10000 × 10000 pixels."
             ),
         )
+
+    dpi = max(
+        1,
+        min(
+            1200,
+            dpi,
+        ),
+    )
 
     data = await read_uploaded_bytes(
         file,
@@ -589,77 +857,75 @@ async def resize_image(
         data
     )
 
-    original_width, original_height = (
-        image.size
-    )
+    resized = None
 
-    if maintain_aspect:
+    try:
+        original_width = image.width
+        original_height = image.height
 
-        ratio = min(
-            width / original_width,
-            height / original_height,
-        )
+        if maintain_aspect:
+            ratio = min(
+                width / original_width,
+                height / original_height,
+            )
 
-        width = max(
-            1,
-            int(
-                original_width * ratio
+            width = max(
+                1,
+                int(
+                    original_width * ratio
+                ),
+            )
+
+            height = max(
+                1,
+                int(
+                    original_height * ratio
+                ),
+            )
+
+        resized = image.resize(
+            (
+                width,
+                height,
             ),
+            Image.Resampling.LANCZOS,
         )
 
-        height = max(
-            1,
-            int(
-                original_height * ratio
-            ),
-        )
+        output_format = output_format.lower()
 
-    resized = image.resize(
-        (
-            width,
-            height,
-        ),
-        Image.Resampling.LANCZOS,
-    )
+        if output_format not in {
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+        }:
+            output_format = "jpg"
 
-    output_format = output_format.lower()
-
-    if output_format not in {
-        "jpg",
-        "jpeg",
-        "png",
-        "webp",
-    }:
-
-        output_format = "jpg"
-
-    if output_format in (
-        "jpg",
-        "jpeg",
-    ):
-
-        resized = normalize_image(
-            resized
-        )
-
-    extension = (
-        "jpg"
         if output_format in (
             "jpg",
             "jpeg",
+        ):
+            processed = normalize_image(
+                resized
+            )
+            resized.close()
+            resized = processed
+
+        extension = (
+            "jpg"
+            if output_format in (
+                "jpg",
+                "jpeg",
+            )
+            else output_format
         )
-        else output_format
-    )
 
-    output_path = get_unique_output_path(
-        extension,
-        "filevixo-resized",
-    )
-
-    try:
+        output_path = get_unique_output_path(
+            extension,
+            "filevixo-resized",
+        )
 
         if extension == "jpg":
-
             resized.save(
                 output_path,
                 format="JPEG",
@@ -672,7 +938,6 @@ async def resize_image(
             )
 
         elif extension == "png":
-
             resized.save(
                 output_path,
                 format="PNG",
@@ -684,7 +949,6 @@ async def resize_image(
             )
 
         else:
-
             resized.save(
                 output_path,
                 format="WEBP",
@@ -692,31 +956,30 @@ async def resize_image(
             )
 
     except Exception as error:
+        if "output_path" in locals():
+            delete_file(
+                str(output_path)
+            )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Image resize failed: {error}"
+                "Image resize failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         try:
-
             image.close()
-
         except Exception:
-
             pass
 
-        try:
-
-            resized.close()
-
-        except Exception:
-
-            pass
+        if resized is not None:
+            try:
+                resized.close()
+            except Exception:
+                pass
 
     background_tasks.add_task(
         delete_file,
@@ -750,6 +1013,16 @@ async def crop_image(
     height: int = Form(...),
     output_format: str = Form("png"),
 ):
+    validate_image_upload(file)
+
+    if width <= 0 or height <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Crop dimensions must "
+                "be greater than zero."
+            ),
+        )
 
     data = await read_uploaded_bytes(
         file,
@@ -760,22 +1033,13 @@ async def crop_image(
         data
     )
 
-    if width <= 0 or height <= 0:
-
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Crop dimensions must "
-                "be greater than zero."
-            ),
-        )
-
     if (
         x < 0
         or y < 0
         or x + width > image.width
         or y + height > image.height
     ):
+        image.close()
 
         raise HTTPException(
             status_code=400,
@@ -785,53 +1049,53 @@ async def crop_image(
             ),
         )
 
-    cropped = image.crop(
-        (
-            x,
-            y,
-            x + width,
-            y + height,
-        )
-    )
+    cropped = None
 
-    output_format = output_format.lower()
-
-    if output_format not in {
-        "jpg",
-        "jpeg",
-        "png",
-        "webp",
-    }:
-
-        output_format = "png"
-
-    if output_format in (
-        "jpg",
-        "jpeg",
-    ):
-
-        cropped = normalize_image(
-            cropped
+    try:
+        cropped = image.crop(
+            (
+                x,
+                y,
+                x + width,
+                y + height,
+            )
         )
 
-    extension = (
-        "jpg"
+        output_format = output_format.lower()
+
+        if output_format not in {
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+        }:
+            output_format = "png"
+
         if output_format in (
             "jpg",
             "jpeg",
+        ):
+            processed = normalize_image(
+                cropped
+            )
+            cropped.close()
+            cropped = processed
+
+        extension = (
+            "jpg"
+            if output_format in (
+                "jpg",
+                "jpeg",
+            )
+            else output_format
         )
-        else output_format
-    )
 
-    output_path = get_unique_output_path(
-        extension,
-        "filevixo-cropped",
-    )
-
-    try:
+        output_path = get_unique_output_path(
+            extension,
+            "filevixo-cropped",
+        )
 
         if extension == "jpg":
-
             cropped.save(
                 output_path,
                 format="JPEG",
@@ -840,7 +1104,6 @@ async def crop_image(
             )
 
         elif extension == "png":
-
             cropped.save(
                 output_path,
                 format="PNG",
@@ -848,7 +1111,6 @@ async def crop_image(
             )
 
         else:
-
             cropped.save(
                 output_path,
                 format="WEBP",
@@ -856,31 +1118,30 @@ async def crop_image(
             )
 
     except Exception as error:
+        if "output_path" in locals():
+            delete_file(
+                str(output_path)
+            )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Image crop failed: {error}"
+                "Image crop failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         try:
-
             image.close()
-
         except Exception:
-
             pass
 
-        try:
-
-            cropped.close()
-
-        except Exception:
-
-            pass
+        if cropped is not None:
+            try:
+                cropped.close()
+            except Exception:
+                pass
 
     background_tasks.add_task(
         delete_file,
@@ -903,25 +1164,6 @@ async def crop_image(
 # ============================================================
 # IMAGES TO PDF
 # ============================================================
-#
-# SUPPORTED:
-#
-# 1 image per page
-# 2 images per page
-# 3 images per page
-# 4 images per page
-# 6 images per page
-# 9 images per page
-#
-# FRONTEND CAN SEND:
-#
-# files
-#
-# OR
-#
-# images
-#
-# ============================================================
 
 @app.post("/api/images-to-pdf")
 async def images_to_pdf(
@@ -937,11 +1179,6 @@ async def images_to_pdf(
     orientation: str = Form("portrait"),
     margin: str = Form("medium"),
 ):
-
-    # --------------------------------------------------------
-    # Accept either "files" or "images"
-    # --------------------------------------------------------
-
     uploaded_files = (
         files
         if files
@@ -949,7 +1186,6 @@ async def images_to_pdf(
     )
 
     if not uploaded_files:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -958,24 +1194,14 @@ async def images_to_pdf(
             ),
         )
 
-    # --------------------------------------------------------
-    # Supported layouts
-    # --------------------------------------------------------
-
-    allowed_images_per_page = {
+    if images_per_page not in {
         1,
         2,
         3,
         4,
         6,
         9,
-    }
-
-    if (
-        images_per_page
-        not in allowed_images_per_page
-    ):
-
+    }:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -984,70 +1210,41 @@ async def images_to_pdf(
             ),
         )
 
-    # --------------------------------------------------------
-    # Page size
-    # --------------------------------------------------------
-
     if page_size not in {
         "A4",
         "Letter",
     }:
-
         page_size = "A4"
-
-    # --------------------------------------------------------
-    # Orientation
-    # --------------------------------------------------------
 
     if orientation not in {
         "portrait",
         "landscape",
     }:
-
         orientation = "portrait"
-
-    # --------------------------------------------------------
-    # Margin
-    # --------------------------------------------------------
 
     if margin not in {
         "small",
         "medium",
         "large",
     }:
-
         margin = "medium"
 
-    # --------------------------------------------------------
-    # ReportLab
-    # --------------------------------------------------------
-
     try:
-
         from reportlab.pdfgen import canvas
-
         from reportlab.lib.pagesizes import (
             A4,
             LETTER,
         )
-
         from reportlab.lib.utils import (
             ImageReader,
         )
-
     except ImportError:
-
         raise HTTPException(
             status_code=500,
             detail=(
-                "reportlab is not installed. "
-                "Run: pip install reportlab"
+                "reportlab is not installed."
             ),
         )
-
-    # --------------------------------------------------------
-    # Page size
-    # --------------------------------------------------------
 
     page_size_map = {
         "A4": A4,
@@ -1059,15 +1256,10 @@ async def images_to_pdf(
     )
 
     if orientation == "landscape":
-
         page_width, page_height = (
             page_height,
             page_width,
         )
-
-    # --------------------------------------------------------
-    # Margins
-    # --------------------------------------------------------
 
     margin_map = {
         "small": 24,
@@ -1089,63 +1281,37 @@ async def images_to_pdf(
         - margin_value * 2
     )
 
-    # --------------------------------------------------------
-    # Grid layout
-    # --------------------------------------------------------
-
     if images_per_page == 1:
-
-        rows = 1
-        columns = 1
+        rows, columns = 1, 1
 
     elif images_per_page == 2:
-
-        rows = 2
-        columns = 1
+        rows, columns = 2, 1
 
     elif images_per_page == 3:
-
-        rows = 3
-        columns = 1
+        rows, columns = 3, 1
 
     elif images_per_page == 4:
-
-        rows = 2
-        columns = 2
+        rows, columns = 2, 2
 
     elif images_per_page == 6:
-
-        rows = 2
-        columns = 3
+        rows, columns = 2, 3
 
     else:
-
-        # 9 images
-        rows = 3
-        columns = 3
+        rows, columns = 3, 3
 
     cell_width = (
-        usable_width
-        / columns
+        usable_width / columns
     )
 
     cell_height = (
-        usable_height
-        / rows
+        usable_height / rows
     )
 
-    # --------------------------------------------------------
-    # Load images
-    # --------------------------------------------------------
-
     image_objects = []
-
     output_path = None
 
     try:
-
         for uploaded_file in uploaded_files:
-
             content_type = (
                 uploaded_file.content_type
                 or ""
@@ -1156,7 +1322,6 @@ async def images_to_pdf(
                 or ""
             ).lower()
 
-            # Basic validation
             if (
                 not content_type.startswith(
                     "image/"
@@ -1170,7 +1335,6 @@ async def images_to_pdf(
                     )
                 )
             ):
-
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -1184,17 +1348,11 @@ async def images_to_pdf(
                 MAX_IMAGE_SIZE,
             )
 
-            image = open_image_from_bytes(
-                data
-            )
-
             image_objects.append(
-                image
+                open_image_from_bytes(
+                    data
+                )
             )
-
-        # ----------------------------------------------------
-        # Create output
-        # ----------------------------------------------------
 
         output_path = get_unique_output_path(
             "pdf",
@@ -1213,26 +1371,19 @@ async def images_to_pdf(
             "Filevixo Images PDF"
         )
 
-        # ----------------------------------------------------
-        # Draw images
-        # ----------------------------------------------------
-
         for index, image in enumerate(
             image_objects
         ):
-
             position_on_page = (
                 index
                 % images_per_page
             )
 
-            # Start a new page whenever
-            # we reach the next group.
-            if position_on_page == 0:
-
-                if index > 0:
-
-                    pdf.showPage()
+            if (
+                position_on_page == 0
+                and index > 0
+            ):
+                pdf.showPage()
 
             row = (
                 position_on_page
@@ -1252,38 +1403,28 @@ async def images_to_pdf(
             cell_y = (
                 page_height
                 - margin_value
-                - (
-                    row + 1
-                ) * cell_height
+                - (row + 1)
+                * cell_height
             )
-
-            image_width = image.width
-
-            image_height = image.height
-
-            # ------------------------------------------------
-            # Keep image aspect ratio
-            # ------------------------------------------------
 
             scale = min(
                 (
                     cell_width - 16
                 )
-                / image_width,
-
+                / image.width,
                 (
                     cell_height - 16
                 )
-                / image_height,
+                / image.height,
             )
 
             draw_width = (
-                image_width
+                image.width
                 * scale
             )
 
             draw_height = (
-                image_height
+                image.height
                 * scale
             )
 
@@ -1305,13 +1446,7 @@ async def images_to_pdf(
                 / 2
             )
 
-            # ------------------------------------------------
-            # Convert to temporary JPEG
-            # ------------------------------------------------
-
-            image_buffer = (
-                io.BytesIO()
-            )
+            image_buffer = io.BytesIO()
 
             rgb_image = normalize_image(
                 image
@@ -1325,10 +1460,6 @@ async def images_to_pdf(
 
             image_buffer.seek(0)
 
-            # ------------------------------------------------
-            # Draw
-            # ------------------------------------------------
-
             pdf.drawImage(
                 ImageReader(
                     image_buffer
@@ -1341,38 +1472,14 @@ async def images_to_pdf(
                 mask="auto",
             )
 
-            # ------------------------------------------------
-            # Cleanup memory
-            # ------------------------------------------------
-
-            try:
-
-                rgb_image.close()
-
-            except Exception:
-
-                pass
-
-            try:
-
-                image_buffer.close()
-
-            except Exception:
-
-                pass
-
-        # ----------------------------------------------------
-        # Finish PDF
-        # ----------------------------------------------------
+            rgb_image.close()
+            image_buffer.close()
 
         pdf.showPage()
-
         pdf.save()
 
     except HTTPException:
-
         if output_path:
-
             delete_file(
                 str(output_path)
             )
@@ -1380,9 +1487,7 @@ async def images_to_pdf(
         raise
 
     except Exception as error:
-
         if output_path:
-
             delete_file(
                 str(output_path)
             )
@@ -1390,34 +1495,22 @@ async def images_to_pdf(
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Images to PDF failed: {error}"
+                "Images to PDF failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         for image in image_objects:
-
             try:
-
                 image.close()
-
             except Exception:
-
                 pass
-
-    # --------------------------------------------------------
-    # Cleanup after response
-    # --------------------------------------------------------
 
     background_tasks.add_task(
         delete_file,
         str(output_path),
     )
-
-    # --------------------------------------------------------
-    # Return PDF
-    # --------------------------------------------------------
 
     return FileResponse(
         path=output_path,
@@ -1435,9 +1528,7 @@ async def word_to_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-
     if not file.filename:
-
         raise HTTPException(
             status_code=400,
             detail="No file selected.",
@@ -1451,7 +1542,6 @@ async def word_to_pdf(
         ".doc",
         ".docx",
     }:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1467,17 +1557,18 @@ async def word_to_pdf(
 
     temp_dir = Path(
         tempfile.mkdtemp(
-            prefix="filevixo-word-pdf-"
+            prefix="filevixo-word-pdf-",
+            dir=TEMP_DIR,
         )
     )
 
+    safe_filename = Path(
+        file.filename
+    ).name
+
     input_path = (
         temp_dir
-        / Path(file.filename).name
-    )
-
-    input_path.write_bytes(
-        data
+        / safe_filename
     )
 
     output_path = (
@@ -1485,18 +1576,19 @@ async def word_to_pdf(
         / f"{input_path.stem}.pdf"
     )
 
-    try:
+    input_path.write_bytes(
+        data
+    )
 
+    try:
         soffice_path = find_libreoffice()
 
         if not soffice_path:
-
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    "LibreOffice is not installed. "
-                    "Install LibreOffice to use "
-                    "Word to PDF conversion."
+                    "LibreOffice is not installed "
+                    "on the server."
                 ),
             )
 
@@ -1516,17 +1608,21 @@ async def word_to_pdf(
         )
 
         if result.returncode != 0:
+            error_message = (
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "Unknown LibreOffice error."
+            )
 
             raise HTTPException(
                 status_code=500,
                 detail=(
                     "Word to PDF conversion failed: "
-                    f"{result.stderr.strip()}"
+                    f"{error_message}"
                 ),
             )
 
         if not output_path.exists():
-
             raise HTTPException(
                 status_code=500,
                 detail=(
@@ -1536,9 +1632,8 @@ async def word_to_pdf(
             )
 
         background_tasks.add_task(
-            shutil.rmtree,
+            delete_directory,
             temp_dir,
-            ignore_errors=True,
         )
 
         return FileResponse(
@@ -1550,10 +1645,8 @@ async def word_to_pdf(
         )
 
     except subprocess.TimeoutExpired:
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True,
+        delete_directory(
+            temp_dir
         )
 
         raise HTTPException(
@@ -1565,25 +1658,21 @@ async def word_to_pdf(
         )
 
     except HTTPException:
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True,
+        delete_directory(
+            temp_dir
         )
 
         raise
 
     except Exception as error:
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True,
+        delete_directory(
+            temp_dir
         )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Word to PDF conversion failed: "
+                "Word to PDF conversion failed: "
                 f"{error}"
             ),
         )
@@ -1598,9 +1687,7 @@ async def pdf_to_word(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-
     if not file.filename:
-
         raise HTTPException(
             status_code=400,
             detail="No file selected.",
@@ -1611,7 +1698,6 @@ async def pdf_to_word(
     ).suffix.lower()
 
     if extension != ".pdf":
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1620,22 +1706,18 @@ async def pdf_to_word(
         )
 
     if PdfReader is None:
-
         raise HTTPException(
             status_code=500,
             detail=(
-                "PyPDF2 is not installed. "
-                "Run: pip install PyPDF2"
+                "PyPDF2 is not installed."
             ),
         )
 
     if Document is None:
-
         raise HTTPException(
             status_code=500,
             detail=(
-                "python-docx is not installed. "
-                "Run: pip install python-docx"
+                "python-docx is not installed."
             ),
         )
 
@@ -1646,7 +1728,8 @@ async def pdf_to_word(
 
     temp_dir = Path(
         tempfile.mkdtemp(
-            prefix="filevixo-pdf-word-"
+            prefix="filevixo-pdf-word-",
+            dir=TEMP_DIR,
         )
     )
 
@@ -1665,21 +1748,17 @@ async def pdf_to_word(
     )
 
     try:
-
         reader = PdfReader(
             str(input_path)
         )
 
         if reader.is_encrypted:
-
             try:
-
                 decrypted = reader.decrypt(
                     ""
                 )
 
                 if not decrypted:
-
                     raise HTTPException(
                         status_code=400,
                         detail=(
@@ -1689,11 +1768,9 @@ async def pdf_to_word(
                     )
 
             except HTTPException:
-
                 raise
 
             except Exception:
-
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -1707,28 +1784,21 @@ async def pdf_to_word(
         for page_number, page in enumerate(
             reader.pages
         ):
-
             try:
-
                 text = (
                     page.extract_text()
                     or ""
                 )
-
             except Exception:
-
                 text = ""
 
             text = text.strip()
 
             if text:
-
                 for line in text.splitlines():
-
                     line = line.strip()
 
                     if line:
-
                         document.add_paragraph(
                             line
                         )
@@ -1737,7 +1807,6 @@ async def pdf_to_word(
                 page_number
                 < len(reader.pages) - 1
             ):
-
                 document.add_page_break()
 
         document.save(
@@ -1745,7 +1814,6 @@ async def pdf_to_word(
         )
 
         if not output_path.exists():
-
             raise HTTPException(
                 status_code=500,
                 detail=(
@@ -1759,9 +1827,8 @@ async def pdf_to_word(
         ).stem
 
         background_tasks.add_task(
-            shutil.rmtree,
+            delete_directory,
             temp_dir,
-            ignore_errors=True,
         )
 
         return FileResponse(
@@ -1776,25 +1843,21 @@ async def pdf_to_word(
         )
 
     except HTTPException:
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True,
+        delete_directory(
+            temp_dir
         )
 
         raise
 
     except Exception as error:
-
-        shutil.rmtree(
-            temp_dir,
-            ignore_errors=True,
+        delete_directory(
+            temp_dir
         )
 
         raise HTTPException(
             status_code=500,
             detail=(
-                f"PDF to Word conversion failed: "
+                "PDF to Word conversion failed: "
                 f"{error}"
             ),
         )
@@ -1809,39 +1872,16 @@ async def remove_background(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-
     if not REMBG_AVAILABLE:
-
         raise HTTPException(
             status_code=500,
             detail=(
-                'Background removal engine is not installed. '
-                'Run: pip install "rembg[cpu]"'
+                "Background removal engine "
+                "is not installed."
             ),
         )
 
-    if remove_bg_session is None:
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Background removal AI model "
-                "could not be loaded. "
-                "Restart the backend after installing rembg."
-            ),
-        )
-
-    if (
-        not file.content_type
-        or not file.content_type.startswith(
-            "image/"
-        )
-    ):
-
-        raise HTTPException(
-            status_code=400,
-            detail="Please upload an image.",
-        )
+    validate_image_upload(file)
 
     data = await read_uploaded_bytes(
         file,
@@ -1852,25 +1892,58 @@ async def remove_background(
         data
     )
 
-    if image.mode not in (
-        "RGB",
-        "RGBA",
-    ):
-
-        image = image.convert(
-            "RGBA"
-        )
+    working_image = image
+    output_image = None
 
     try:
+        if working_image.mode not in (
+            "RGB",
+            "RGBA",
+        ):
+            converted = working_image.convert(
+                "RGBA"
+            )
+
+            working_image.close()
+
+            working_image = converted
+
+        resized_image = (
+            resize_for_background_removal(
+                working_image
+            )
+        )
+
+        if resized_image is not working_image:
+            working_image.close()
+            working_image = resized_image
+
+        session = get_remove_bg_session()
+
+        if session is None:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Background removal AI model "
+                    "could not be loaded."
+                ),
+            )
 
         output_image = rembg_remove(
-            image,
-            session=remove_bg_session,
+            working_image,
+            session=session,
             post_process_mask=True,
             decontaminate=True,
         )
 
+    except HTTPException:
+        raise
+
     except Exception as error:
+        print(
+            "[Filevixo] Background removal error: "
+            f"{error}"
+        )
 
         raise HTTPException(
             status_code=500,
@@ -1881,20 +1954,28 @@ async def remove_background(
         )
 
     finally:
-
         try:
-
-            image.close()
-
+            working_image.close()
         except Exception:
-
             pass
 
-    if output_image.mode != "RGBA":
+    if output_image is None:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Background removal did not "
+                "produce an output image."
+            ),
+        )
 
-        output_image = output_image.convert(
+    if output_image.mode != "RGBA":
+        converted = output_image.convert(
             "RGBA"
         )
+
+        output_image.close()
+
+        output_image = converted
 
     output_path = get_unique_output_path(
         "png",
@@ -1902,7 +1983,6 @@ async def remove_background(
     )
 
     try:
-
         output_image.save(
             output_path,
             format="PNG",
@@ -1910,6 +1990,9 @@ async def remove_background(
         )
 
     except Exception as error:
+        delete_file(
+            str(output_path)
+        )
 
         raise HTTPException(
             status_code=500,
@@ -1920,13 +2003,9 @@ async def remove_background(
         )
 
     finally:
-
         try:
-
             output_image.close()
-
         except Exception:
-
             pass
 
     background_tasks.add_task(
@@ -1952,19 +2031,18 @@ async def merge_pdf(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
 ):
-
-    if PdfReader is None or PdfWriter is None:
-
+    if (
+        PdfReader is None
+        or PdfWriter is None
+    ):
         raise HTTPException(
             status_code=500,
             detail=(
-                "PyPDF2 is not installed. "
-                "Run: pip install PyPDF2"
+                "PyPDF2 is not installed."
             ),
         )
 
     if len(files) < 2:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1974,7 +2052,6 @@ async def merge_pdf(
         )
 
     if len(files) > MAX_MERGE_FILES:
-
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1984,45 +2061,20 @@ async def merge_pdf(
         )
 
     writer = PdfWriter()
+    pdf_streams = []
 
     total_size = 0
-
     output_path = None
 
     try:
-
         for uploaded_file in files:
-
-            content_type = (
-                uploaded_file.content_type
-                or ""
-            ).lower()
-
-            filename = (
-                uploaded_file.filename
-                or ""
-            ).lower()
-
-            if (
-                content_type
-                != "application/pdf"
-                and not filename.endswith(
-                    ".pdf"
-                )
-            ):
-
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"{uploaded_file.filename} "
-                        "is not a PDF file."
-                    ),
-                )
+            validate_pdf_upload(
+                uploaded_file
+            )
 
             data = await uploaded_file.read()
 
             if not data:
-
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -2032,7 +2084,6 @@ async def merge_pdf(
                 )
 
             if len(data) > MAX_PDF_SIZE:
-
                 raise HTTPException(
                     status_code=413,
                     detail=(
@@ -2047,7 +2098,6 @@ async def merge_pdf(
                 total_size
                 > MAX_TOTAL_MERGE_SIZE
             ):
-
                 raise HTTPException(
                     status_code=413,
                     detail=(
@@ -2056,18 +2106,20 @@ async def merge_pdf(
                     ),
                 )
 
+            pdf_stream = io.BytesIO(
+                data
+            )
+
+            pdf_streams.append(
+                pdf_stream
+            )
+
             try:
-
-                pdf_stream = io.BytesIO(
-                    data
-                )
-
                 reader = PdfReader(
                     pdf_stream
                 )
 
             except Exception as error:
-
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -2078,15 +2130,12 @@ async def merge_pdf(
                 )
 
             if reader.is_encrypted:
-
                 try:
-
                     decrypted = reader.decrypt(
                         ""
                     )
 
                     if not decrypted:
-
                         raise HTTPException(
                             status_code=400,
                             detail=(
@@ -2096,11 +2145,9 @@ async def merge_pdf(
                         )
 
                 except HTTPException:
-
                     raise
 
                 except Exception:
-
                     raise HTTPException(
                         status_code=400,
                         detail=(
@@ -2110,7 +2157,6 @@ async def merge_pdf(
                     )
 
             for page in reader.pages:
-
                 writer.add_page(
                     page
                 )
@@ -2124,15 +2170,12 @@ async def merge_pdf(
             output_path,
             "wb",
         ) as output_file:
-
             writer.write(
                 output_file
             )
 
     except HTTPException:
-
         if output_path:
-
             delete_file(
                 str(output_path)
             )
@@ -2140,9 +2183,7 @@ async def merge_pdf(
         raise
 
     except Exception as error:
-
         if output_path:
-
             delete_file(
                 str(output_path)
             )
@@ -2150,19 +2191,22 @@ async def merge_pdf(
         raise HTTPException(
             status_code=500,
             detail=(
-                f"PDF merge failed: {error}"
+                "PDF merge failed: "
+                f"{error}"
             ),
         )
 
     finally:
-
         try:
-
             writer.close()
-
         except Exception:
-
             pass
+
+        for stream in pdf_streams:
+            try:
+                stream.close()
+            except Exception:
+                pass
 
     background_tasks.add_task(
         delete_file,
@@ -2177,79 +2221,66 @@ async def merge_pdf(
 
 
 # ============================================================
-# STARTUP INFORMATION
+# STARTUP
 # ============================================================
 
 @app.on_event("startup")
 async def startup_event():
+    cleanup_old_temp_files()
 
     print("")
-
     print("=" * 60)
-
     print("Filevixo API")
-
     print("=" * 60)
 
     print(
-        "Backend: http://127.0.0.1:8000"
+        "Environment:",
+        (
+            "Render"
+            if os.getenv("RENDER")
+            else "Local"
+        ),
     )
 
     print(
-        "Docs:    http://127.0.0.1:8000/docs"
+        "Frontend URL:",
+        FRONTEND_URL
+        or "localhost development",
+    )
+
+    print(
+        "Background model:",
+        REMOVE_BG_MODEL,
+    )
+
+    print(
+        "Background model loading:",
+        "lazy",
+    )
+
+    print(
+        "Background max dimension:",
+        REMOVE_BG_MAX_DIMENSION,
     )
 
     print("")
 
     print("Available routes:")
 
-    print(
-        "POST /api/compress-image"
-    )
-
-    print(
-        "POST /api/convert-image"
-    )
-
-    print(
-        "POST /api/resize-image"
-    )
-
-    print(
-        "POST /api/crop-image"
-    )
-
-    print(
-        "POST /api/images-to-pdf"
-    )
-
-    print(
-        "POST /api/word-to-pdf"
-    )
-
-    print(
-        "POST /api/pdf-to-word"
-    )
-
-    print(
-        "POST /api/remove-background"
-    )
-
-    print(
-        "POST /api/merge-pdf"
-    )
+    print("POST /api/compress-image")
+    print("POST /api/convert-image")
+    print("POST /api/resize-image")
+    print("POST /api/crop-image")
+    print("POST /api/images-to-pdf")
+    print("POST /api/word-to-pdf")
+    print("POST /api/pdf-to-word")
+    print("POST /api/remove-background")
+    print("POST /api/merge-pdf")
 
     print("")
 
-    print(
-        "Background removal:",
-        (
-            "READY"
-            if remove_bg_session is not None
-            else "UNAVAILABLE"
-        ),
-    )
+    print("Health: /health")
+    print("Docs: /docs")
 
     print("=" * 60)
-
     print("")
