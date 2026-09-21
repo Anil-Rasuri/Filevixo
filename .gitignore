@@ -1,0 +1,52 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# Python virtual environment
+Backend/venv/
+venv/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# RemBG / AI model cache
+.onnx/
+*.onnx
+*.onnx.data
+rembg/
+models/
+
+# Temporary files
+tmp/
+temp/
+uploads/
+outputs/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build/cache
+*.tmp
+*.temp
