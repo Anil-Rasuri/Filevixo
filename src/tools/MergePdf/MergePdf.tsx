@@ -1,5 +1,5 @@
 import { useState } from "react";
-import "./MergePDF.css";
+import "./MergePdf.css";
 import { mergePdf } from "./mergePdf";
 
 interface MergePDFProps {
