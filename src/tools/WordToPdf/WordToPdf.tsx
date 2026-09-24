@@ -1,5 +1,5 @@
 import { useState } from "react";
-import "./WordToPDF.css";
+import "./WordToPdf.css";
 import { wordToPdf } from "./wordToPdf";
 
 interface WordToPDFProps {
