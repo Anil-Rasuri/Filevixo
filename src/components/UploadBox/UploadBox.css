@@ -1,0 +1,134 @@
+.upload-wrapper {
+  width: 100%;
+}
+
+.upload-input {
+  display: none;
+}
+
+/* Main upload area */
+.upload-box {
+  width: 100%;
+  min-height: 245px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  padding: 32px;
+
+  background: #f8fbff;
+  border: 2px dashed #cbd5e1;
+  border-radius: 16px;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.upload-box:hover {
+  border-color: #2563eb;
+  background: #f5f9ff;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.06);
+}
+
+.upload-box:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* Upload icon */
+.upload-icon {
+  width: 64px;
+  height: 64px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin-bottom: 15px;
+
+  border-radius: 14px;
+  background: #eef5ff;
+  color: #2563eb;
+}
+
+/* Upload title */
+.upload-box h3 {
+  margin: 0;
+
+  color: #111827;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+/* Supported formats */
+.upload-supported {
+  margin: 9px 0 0;
+
+  max-width: 650px;
+
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Maximum size */
+.upload-size {
+  margin: 8px 0 0;
+
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* Error state */
+.upload-box-error {
+  border-color: #ef4444;
+  background: #fffafa;
+}
+
+.upload-box-error:hover {
+  border-color: #dc2626;
+  background: #fffafa;
+}
+
+.upload-error-message {
+  margin-top: 12px;
+
+  padding: 8px 12px;
+
+  border-radius: 8px;
+
+  background: #fff1f2;
+  color: #b91c1c;
+
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .upload-box {
+    min-height: 210px;
+    padding: 24px 16px;
+  }
+
+  .upload-icon {
+    width: 56px;
+    height: 56px;
+  }
+
+  .upload-box h3 {
+    font-size: 16px;
+  }
+
+  .upload-supported {
+    max-width: 280px;
+  }
+}

@@ -1,0 +1,870 @@
+.resize-image {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.resize-image-layout {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1.05fr)
+    minmax(360px, 0.95fr);
+
+  gap: 22px;
+
+  align-items: stretch;
+
+  /*
+   * We calculate the scroll position
+   * manually in ResizeImage.tsx.
+   */
+  scroll-margin-top: 0;
+}
+
+/* ======================================================
+   LEFT PREVIEW
+====================================================== */
+
+.resize-preview-panel {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  min-height: 0;
+}
+
+.resize-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-bottom: 9px;
+}
+
+.resize-preview-heading h3 {
+  margin: 0;
+
+  color: #111827;
+
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.resize-preview-heading p {
+  margin: 3px 0 0;
+
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+.resize-preview-area {
+  height: min(
+    62vh,
+    500px
+  );
+
+  min-height: 320px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+
+  padding: 18px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+
+  background:
+    linear-gradient(
+      45deg,
+      #f3f4f6 25%,
+      transparent 25%
+    ),
+    linear-gradient(
+      -45deg,
+      #f3f4f6 25%,
+      transparent 25%
+    ),
+    linear-gradient(
+      45deg,
+      transparent 75%,
+      #f3f4f6 75%
+    ),
+    linear-gradient(
+      -45deg,
+      transparent 75%,
+      #f3f4f6 75%
+    );
+
+  background-size: 22px 22px;
+
+  background-position:
+    0 0,
+    0 11px,
+    11px -11px,
+    -11px 0;
+}
+
+.resize-canvas-wrapper {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+}
+
+.resize-preview-canvas {
+  display: block;
+
+  max-width: 100%;
+  max-height: 100%;
+
+  width: auto;
+  height: auto;
+
+  border-radius: 4px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 8px 26px
+    rgba(15, 23, 42, 0.16);
+}
+
+.resize-preview-empty {
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 10px;
+
+  color: #9ca3af;
+
+  text-align: center;
+}
+
+.resize-preview-empty svg {
+  color: #94a3b8;
+}
+
+.resize-preview-empty span {
+  font-size: 12px;
+}
+
+/* ======================================================
+   PREVIEW INFO
+====================================================== */
+
+.resize-preview-info {
+  display: grid;
+
+  grid-template-columns:
+    repeat(3, 1fr);
+
+  gap: 7px;
+
+  margin-top: 8px;
+}
+
+.resize-preview-info > div {
+  min-width: 0;
+
+  padding: 8px 10px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+
+  background: #ffffff;
+}
+
+.resize-preview-info span {
+  display: block;
+
+  margin-bottom: 3px;
+
+  color: #9ca3af;
+
+  font-size: 9px;
+  font-weight: 700;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.04em;
+}
+
+.resize-preview-info strong {
+  display: block;
+
+  overflow: hidden;
+
+  color: #374151;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ======================================================
+   RIGHT SETTINGS
+====================================================== */
+
+.resize-settings {
+  min-width: 0;
+
+  padding: 18px;
+
+  border: 1px solid #e5e7eb;
+  border-radius: 13px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 5px 18px
+    rgba(15, 23, 42, 0.04);
+}
+
+.resize-image-header {
+  margin-bottom: 13px;
+}
+
+.resize-image-header h3 {
+  margin: 0 0 4px;
+
+  color: #111827;
+
+  font-size: 20px;
+  font-weight: 700;
+
+  line-height: 1.2;
+}
+
+.resize-image-header p {
+  margin: 0;
+
+  color: #6b7280;
+
+  font-size: 11px;
+
+  line-height: 1.4;
+}
+
+/* ======================================================
+   FILE INFORMATION
+====================================================== */
+
+.resize-file-info {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-bottom: 13px;
+  padding: 9px 11px;
+
+  border: 1px solid #dbeafe;
+  border-radius: 9px;
+
+  background: #f8fbff;
+}
+
+.resize-file-icon {
+  width: 34px;
+  height: 34px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+
+  background: #2563eb;
+
+  color: #ffffff;
+}
+
+.resize-file-details {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 2px;
+}
+
+.resize-file-details strong {
+  overflow: hidden;
+
+  color: #111827;
+
+  font-size: 11px;
+  font-weight: 600;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resize-file-details span {
+  color: #6b7280;
+
+  font-size: 9px;
+}
+
+/* ======================================================
+   SECTIONS
+====================================================== */
+
+.resize-section {
+  margin-top: 14px;
+}
+
+.resize-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 8px;
+
+  margin-bottom: 7px;
+}
+
+.resize-section-heading h4 {
+  margin: 0;
+
+  color: #111827;
+
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.resize-section-heading p {
+  margin: 2px 0 0;
+
+  color: #6b7280;
+
+  font-size: 9px;
+
+  line-height: 1.3;
+}
+
+/* ======================================================
+   DIMENSION UNIT
+====================================================== */
+
+.resize-dimension-unit {
+  width: 105px;
+  height: 35px;
+
+  flex-shrink: 0;
+
+  padding: 0 7px;
+
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+
+  outline: none;
+
+  background: #ffffff;
+
+  color: #111827;
+
+  font-family: inherit;
+
+  font-size: 10px;
+  font-weight: 600;
+
+  cursor: pointer;
+}
+
+.resize-dimension-unit:focus {
+  border-color: #2563eb;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(37, 99, 235, 0.1);
+}
+
+/* ======================================================
+   DIMENSIONS
+====================================================== */
+
+.resize-fields {
+  display: grid;
+
+  grid-template-columns:
+    1fr 1fr;
+
+  gap: 8px;
+}
+
+.resize-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+.resize-field label {
+  color: #374151;
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.resize-input-wrapper {
+  display: flex;
+  align-items: center;
+
+  height: 37px;
+
+  overflow: hidden;
+
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+
+  background: #ffffff;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.resize-input-wrapper:focus-within {
+  border-color: #2563eb;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(37, 99, 235, 0.1);
+}
+
+.resize-input-wrapper input {
+  width: 100%;
+  height: 100%;
+
+  min-width: 0;
+
+  padding: 0 9px;
+
+  border: 0;
+  outline: 0;
+
+  background: transparent;
+
+  color: #111827;
+
+  font-family: inherit;
+
+  font-size: 11px;
+}
+
+.resize-input-wrapper input::placeholder {
+  color: #9ca3af;
+}
+
+.resize-input-wrapper input::-webkit-outer-spin-button,
+.resize-input-wrapper input::-webkit-inner-spin-button {
+  margin: 0;
+
+  -webkit-appearance: none;
+}
+
+.resize-input-wrapper input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.resize-input-wrapper > span {
+  flex-shrink: 0;
+
+  padding-right: 9px;
+
+  color: #6b7280;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* ======================================================
+   DPI
+====================================================== */
+
+.resize-section .resize-input-wrapper {
+  width: 100%;
+}
+
+/* ======================================================
+   OUTPUT FORMAT
+====================================================== */
+
+.resize-selected-format {
+  flex-shrink: 0;
+
+  padding: 4px 6px;
+
+  border-radius: 5px;
+
+  background: #eff6ff;
+
+  color: #2563eb;
+
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.resize-format-options {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 5px;
+}
+
+.resize-format-button {
+  min-height: 34px;
+
+  padding: 5px;
+
+  border-radius: 6px;
+
+  font-family: inherit;
+
+  font-size: 9px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.resize-format-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.resize-format-primary {
+  border: 1px solid #bfdbfe;
+
+  background: #eff6ff;
+
+  color: #1d4ed8;
+}
+
+.resize-format-primary:hover:not(:disabled) {
+  border-color: #2563eb;
+
+  background: #dbeafe;
+}
+
+.resize-format-primary.selected {
+  border-color: #2563eb;
+
+  background: #2563eb;
+
+  color: #ffffff;
+}
+
+.resize-format-secondary {
+  border: 1px solid #e5e7eb;
+
+  background: #ffffff;
+
+  color: #374151;
+}
+
+.resize-format-secondary:hover:not(:disabled) {
+  border-color: #9ca3af;
+
+  background: #f9fafb;
+}
+
+.resize-format-secondary.selected {
+  border-color: #6b7280;
+
+  background: #f3f4f6;
+
+  color: #111827;
+}
+
+.resize-format-button:disabled {
+  opacity: 0.6;
+
+  cursor: not-allowed;
+}
+
+/* ======================================================
+   MAX FILE SIZE
+====================================================== */
+
+.resize-max-size-row {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    70px;
+
+  gap: 6px;
+}
+
+.resize-unit-select {
+  width: 100%;
+  height: 37px;
+
+  padding: 0 7px;
+
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+
+  outline: none;
+
+  background: #ffffff;
+
+  color: #111827;
+
+  font-family: inherit;
+
+  font-size: 10px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+
+.resize-unit-select:focus {
+  border-color: #2563eb;
+
+  box-shadow:
+    0 0 0 2px
+    rgba(37, 99, 235, 0.1);
+}
+
+/* ======================================================
+   ERROR
+====================================================== */
+
+.resize-error {
+  display: flex;
+  align-items: flex-start;
+
+  gap: 6px;
+
+  margin-top: 10px;
+
+  padding: 8px 9px;
+
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+
+  background: #fef2f2;
+
+  color: #b91c1c;
+
+  font-size: 9px;
+
+  line-height: 1.4;
+}
+
+/* ======================================================
+   RESIZE BUTTON
+====================================================== */
+
+.resize-button {
+  width: 100%;
+
+  min-height: 39px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 7px;
+
+  margin-top: 13px;
+
+  padding: 8px 13px;
+
+  border: 0;
+  border-radius: 7px;
+
+  background: #2563eb;
+
+  color: #ffffff;
+
+  font-family: inherit;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.resize-button:hover:not(:disabled) {
+  background: #1d4ed8;
+
+  box-shadow:
+    0 4px 12px
+    rgba(37, 99, 235, 0.18);
+}
+
+.resize-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.resize-button:disabled {
+  opacity: 0.6;
+
+  cursor: not-allowed;
+}
+
+/* ======================================================
+   SPINNER
+====================================================== */
+
+.resize-spinner {
+  width: 14px;
+  height: 14px;
+
+  border: 2px solid
+    rgba(255, 255, 255, 0.35);
+
+  border-top-color: #ffffff;
+
+  border-radius: 50%;
+
+  animation:
+    resize-spin 0.7s linear infinite;
+}
+
+@keyframes resize-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ======================================================
+   SHORT DESKTOP SCREENS
+====================================================== */
+
+@media (max-height: 760px) and (min-width: 851px) {
+  .resize-preview-area {
+    height: 48vh;
+
+    min-height: 260px;
+  }
+
+  .resize-settings {
+    padding: 14px;
+  }
+
+  .resize-section {
+    margin-top: 10px;
+  }
+
+  .resize-file-info {
+    margin-bottom: 9px;
+  }
+
+  .resize-image-header {
+    margin-bottom: 9px;
+  }
+
+  .resize-preview-info {
+    margin-top: 6px;
+  }
+}
+
+/* ======================================================
+   TABLET
+====================================================== */
+
+@media (max-width: 850px) {
+  .resize-image-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .resize-preview-area {
+    height: 380px;
+  }
+
+  .resize-settings {
+    width: 100%;
+  }
+}
+
+/* ======================================================
+   MOBILE
+====================================================== */
+
+@media (max-width: 600px) {
+  .resize-image-layout {
+    gap: 18px;
+  }
+
+  .resize-preview-area {
+    height: 300px;
+
+    min-height: 260px;
+
+    padding: 12px;
+  }
+
+  .resize-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .resize-format-options {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .resize-preview-info {
+    grid-template-columns: 1fr;
+  }
+
+  .resize-settings {
+    padding: 15px;
+  }
+
+  .resize-dimension-unit {
+    width: 95px;
+  }
+}
+
+/* ======================================================
+   SMALL MOBILE
+====================================================== */
+
+@media (max-width: 420px) {
+  .resize-preview-area {
+    height: 250px;
+  }
+
+  .resize-max-size-row {
+    grid-template-columns:
+      minmax(0, 1fr)
+      65px;
+  }
+}

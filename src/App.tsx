@@ -1,21 +1,34 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-import Navbar from "./components/Navbar";
-import UploadBox from "./components/UploadBox";
-import ResultBox from "./components/ResultBox";
-import ToolCard from "./components/ToolCard";
+import "./App.css";
+import "./RemoveBackgroundPreview.css";
 
-import CompressImage from "./tools/CompressImage";
-import ConvertImage from "./tools/ConvertImage";
-import ResizeImage from "./tools/ResizeImage";
-import CropImage from "./tools/CropImage";
-import ImagesToPdf from "./tools/ImagesToPdf";
-import WordToPDF from "./tools/WordToPDF";
-import PDFToWord from "./tools/PDFToWord";
-import RemoveBackground from "./tools/RemoveBackground";
-import MergePDF from "./tools/MergePDF";
+// Components
+import Navbar from "./components/Navbar/Navbar";
+import Hero from "./components/Hero/Hero";
+import ToolCard from "./components/ToolCard/ToolCard";
+import UploadBox from "./components/UploadBox/UploadBox";
+import ResultBox from "./components/ResultBox/ResultBox";
+import HowItWorks from "./components/HowItWorks/HowItWorks";
+import Security from "./components/Security/Security";
+import Footer from "./components/Footer/Footer";
 
-type ToolMode =
+// Tools
+import CompressImage from "./tools/CompressImage/CompressImage.tsx";
+import ConvertImage from "./tools/ConvertImage/ConvertImage.tsx";
+import ResizeImage from "./tools/ResizeImage/ResizeImage.tsx";
+import CropImage from "./tools/CropImage/CropImage.tsx";
+import ImagesToPdf from "./tools/ImagesToPdf/ImagesToPdf.tsx";
+import WordToPDF from "./tools/WordToPdf/WordToPdf.tsx";
+import PDFToWord from "./tools/PDFToWord/PDFToWord.tsx";
+import RemoveBackground from "./tools/RemoveBackground/RemoveBackground.tsx";
+import MergePDF from "./tools/MergePDF/MergePDF.tsx";
+
+type ToolId =
   | "compress"
   | "convert"
   | "resize"
@@ -26,15 +39,610 @@ type ToolMode =
   | "remove-background"
   | "merge-pdf";
 
+type ToolCategory =
+  | "Image Tools"
+  | "Document Tools"
+  | "AI Tools"
+  | "PDF Tools";
+
+type ToolColor =
+  | "blue"
+  | "violet"
+  | "emerald"
+  | "orange";
+
+interface ResultData {
+  url: string;
+  name: string;
+  size: number;
+}
+
+interface ToolDefinition {
+  id: ToolId;
+  title: string;
+  description: string;
+  category: ToolCategory;
+  color: ToolColor;
+  icon: React.ReactNode;
+}
+
+/* =========================================================
+   ICONS
+========================================================= */
+
+const fileIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M6 3.5h8l4 4V20.5H6V3.5Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M14 3.5v4h4"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const compressIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M8 4H5v3"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M16 4h3v3"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M8 20H5v-3"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M16 20h3v-3"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M9 9h6v6H9z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    />
+  </svg>
+);
+
+const convertIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M7 7h11"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="m14 3 4 4-4 4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M17 17H6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="m10 13-4 4 4 4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const resizeIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M4 9V5a1 1 0 0 1 1-1h4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="M20 15v4a1 1 0 0 1-1 1h-4"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="m4 5 6 6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="m20 19-6-6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const cropIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M6 3v14a4 4 0 0 0 4 4h11"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="M3 6h14a4 4 0 0 1 4 4v11"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const pdfIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M6 3.5h8l4 4V20.5H6V3.5Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M14 3.5v4h4"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+
+    <path
+      d="M8.5 15h1.5a1.5 1.5 0 0 0 0-3H8.5v5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const backgroundIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    />
+
+    <path
+      d="m7 16 3.2-3.5 2.4 2.5 2.2-2.5L17 16"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    <circle
+      cx="9"
+      cy="8.5"
+      r="1.5"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    />
+  </svg>
+);
+
+const mergeIcon = (
+  <svg
+    width="22"
+    height="22"
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M7 4v16"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="M17 4v16"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="M4 8h6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+
+    <path
+      d="M14 16h6"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+/* =========================================================
+   TOOLS
+========================================================= */
+
+const tools: ToolDefinition[] = [
+  /* ---------------- IMAGE TOOLS ---------------- */
+
+  {
+    id: "compress",
+    title: "Compress Image",
+    description:
+      "Reduce image size while keeping useful quality.",
+    category: "Image Tools",
+    color: "blue",
+    icon: compressIcon,
+  },
+
+  {
+    id: "convert",
+    title: "Convert Image",
+    description:
+      "Convert images between JPG, PNG, and WEBP.",
+    category: "Image Tools",
+    color: "blue",
+    icon: convertIcon,
+  },
+
+  {
+    id: "resize",
+    title: "Resize Image",
+    description:
+      "Change image dimensions to the size you need.",
+    category: "Image Tools",
+    color: "blue",
+    icon: resizeIcon,
+  },
+
+  {
+    id: "crop",
+    title: "Crop Image",
+    description:
+      "Crop your image to remove unwanted areas.",
+    category: "Image Tools",
+    color: "blue",
+    icon: cropIcon,
+  },
+
+  /* ---------------- DOCUMENT TOOLS ---------------- */
+
+  {
+    id: "word-to-pdf",
+    title: "Word to PDF",
+    description:
+      "Convert Word documents into PDF files.",
+    category: "Document Tools",
+    color: "violet",
+    icon: fileIcon,
+  },
+
+  {
+    id: "pdf-to-word",
+    title: "PDF to Word",
+    description:
+      "Convert PDF documents into editable Word files.",
+    category: "Document Tools",
+    color: "violet",
+    icon: pdfIcon,
+  },
+
+  /* ---------------- AI TOOLS ---------------- */
+
+  {
+    id: "remove-background",
+    title: "Remove Background",
+    description:
+      "Remove the background from an image automatically.",
+    category: "AI Tools",
+    color: "emerald",
+    icon: backgroundIcon,
+  },
+
+  /* ---------------- PDF TOOLS ---------------- */
+
+  {
+    id: "images-to-pdf",
+    title: "Images to PDF",
+    description:
+      "Turn images into a single PDF document.",
+    category: "PDF Tools",
+    color: "orange",
+    icon: pdfIcon,
+  },
+
+  {
+    id: "merge-pdf",
+    title: "Merge PDF",
+    description:
+      "Combine multiple PDF files into one document.",
+    category: "PDF Tools",
+    color: "orange",
+    icon: mergeIcon,
+  },
+];
+
+/* =========================================================
+   CATEGORY COMPONENT
+========================================================= */
+
+function ToolCategory({
+  title,
+  category,
+  tools,
+  activeTool,
+  onSelect,
+}: {
+  title: string;
+  category: ToolCategory;
+  tools: ToolDefinition[];
+  activeTool: ToolId;
+  onSelect: (id: ToolId) => void;
+}) {
+  const categoryTools = tools.filter(
+    (tool) => tool.category === category,
+  );
+
+  if (categoryTools.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="tool-category">
+      <div className="tool-category-heading">
+        <h3>{title}</h3>
+      </div>
+
+      <div className="tool-category-grid">
+        {categoryTools.map((tool) => (
+          <ToolCard
+            key={tool.id}
+            title={tool.title}
+            description={tool.description}
+            icon={tool.icon}
+            active={activeTool === tool.id}
+            accent={tool.color}
+            onClick={() => onSelect(tool.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+/* =========================================================
+   REMOVE BACKGROUND RESULT PREVIEW
+========================================================= */
+
+function RemoveBackgroundResultPreview({
+  originalUrl,
+  resultUrl,
+  originalName,
+  originalSize,
+  resultName,
+  resultSize,
+  onDownload,
+  onReset,
+}: {
+  originalUrl: string | null;
+  resultUrl: string;
+  originalName: string;
+  originalSize: number;
+  resultName: string;
+  resultSize: number;
+  onDownload: () => void;
+  onReset: () => void;
+}) {
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  return (
+    <div className="background-result">
+      <div className="background-result-header">
+        <div>
+          <span className="background-result-label">
+            RESULT PREVIEW
+          </span>
+
+          <h3>Background removed</h3>
+
+          <p>
+            Compare the original image with your transparent result
+            before downloading.
+          </p>
+        </div>
+      </div>
+
+      <div className="background-result-preview-grid">
+        <div className="background-preview-card">
+          <div className="background-preview-card-header">
+            <span>Original</span>
+            <span>{formatFileSize(originalSize)}</span>
+          </div>
+
+          <div className="background-preview-image original">
+            {originalUrl ? (
+              <img
+                src={originalUrl}
+                alt="Original image"
+              />
+            ) : (
+              <div className="background-preview-empty">
+                Preview unavailable
+              </div>
+            )}
+          </div>
+
+          <div className="background-preview-name">
+            {originalName}
+          </div>
+        </div>
+
+        <div className="background-preview-card">
+          <div className="background-preview-card-header">
+            <span>Result</span>
+            <span>{formatFileSize(resultSize)}</span>
+          </div>
+
+          <div className="background-preview-image checkerboard">
+            <img
+              src={resultUrl}
+              alt="Background removed result"
+            />
+          </div>
+
+          <div className="background-preview-name">
+            {resultName}
+          </div>
+        </div>
+      </div>
+
+      <div className="background-result-actions">
+        <button
+          type="button"
+          className="background-download-button"
+          onClick={onDownload}
+        >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+
+          Download PNG
+        </button>
+
+        <button
+          type="button"
+          className="background-start-over-button"
+          onClick={onReset}
+        >
+          Start over
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   APP
+========================================================= */
+
 function App() {
-  const [mode, setMode] =
-    useState<ToolMode>("compress");
+  const [activeTool, setActiveTool] =
+    useState<ToolId>("compress");
 
   const [selectedFile, setSelectedFile] =
     useState<File | null>(null);
 
   const [outputFormat, setOutputFormat] =
-    useState("png");
+    useState("");
 
   const [loading, setLoading] =
     useState(false);
@@ -42,1117 +650,679 @@ function App() {
   const [error, setError] =
     useState("");
 
-  const [downloadUrl, setDownloadUrl] =
-    useState("");
-
-  const [downloadName, setDownloadName] =
-    useState("");
-
-  const [resultSize, setResultSize] =
-    useState<number | null>(null);
+  const [result, setResult] =
+    useState<ResultData | null>(null);
 
   const [resultMessage, setResultMessage] =
     useState("");
+
+  const [originalPreviewUrl, setOriginalPreviewUrl] =
+    useState<string | null>(null);
+
+  const [resetKey, setResetKey] = useState(0);
+
+  const [activeSection, setActiveSection] =
+    useState<
+      "home" | "tools" | "how-it-works"
+    >("home");
+
+  const workspaceRef =
+    useRef<HTMLElement | null>(null);
+
+  const uploadRef =
+    useRef<HTMLDivElement | null>(null);
 
   const resultRef =
     useRef<HTMLDivElement | null>(null);
 
   const downloadUrlRef =
-    useRef("");
+    useRef<string | null>(null);
+
+  /* =======================================================
+     CLEANUP
+  ======================================================= */
 
   useEffect(() => {
-    downloadUrlRef.current = downloadUrl;
-  }, [downloadUrl]);
+    if (
+      activeTool !== "remove-background" ||
+      !selectedFile
+    ) {
+      setOriginalPreviewUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(selectedFile);
+    setOriginalPreviewUrl(url);
+
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [activeTool, selectedFile]);
 
   useEffect(() => {
     return () => {
       if (downloadUrlRef.current) {
         URL.revokeObjectURL(
-          downloadUrlRef.current
+          downloadUrlRef.current,
         );
       }
     };
   }, []);
 
+  /* =======================================================
+     NAVBAR ACTIVE SECTION
+  ======================================================= */
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const home =
+        document.getElementById("home");
+
+      const toolsSection =
+        document.getElementById("tools");
+
+      const workspace =
+        document.getElementById("workspace");
+
+      const howItWorks =
+        document.getElementById("how-it-works");
+
+      const viewportMiddle =
+        window.innerHeight * 0.35;
+
+      if (
+        howItWorks &&
+        howItWorks.getBoundingClientRect().top <=
+          viewportMiddle
+      ) {
+        setActiveSection("how-it-works");
+        return;
+      }
+
+      if (
+        workspace &&
+        workspace.getBoundingClientRect().top <=
+          viewportMiddle
+      ) {
+        setActiveSection("tools");
+        return;
+      }
+
+      if (
+        toolsSection &&
+        toolsSection.getBoundingClientRect().top <=
+          viewportMiddle
+      ) {
+        setActiveSection("tools");
+        return;
+      }
+
+      if (home) {
+        setActiveSection("home");
+      }
+    };
+
+    window.addEventListener(
+      "scroll",
+      handleScroll,
+      { passive: true },
+    );
+
+    handleScroll();
+
+    return () => {
+      window.removeEventListener(
+        "scroll",
+        handleScroll,
+      );
+    };
+  }, []);
+
+  /* =======================================================
+     RESET
+  ======================================================= */
+
   const clearResult = () => {
     if (downloadUrlRef.current) {
       URL.revokeObjectURL(
-        downloadUrlRef.current
+        downloadUrlRef.current,
       );
 
-      downloadUrlRef.current = "";
+      downloadUrlRef.current = null;
     }
 
-    setDownloadUrl("");
-    setDownloadName("");
-    setResultSize(null);
+    setResult(null);
     setResultMessage("");
+    setError("");
   };
 
-  const resetWorkspace = () => {
+  const resetWorkspace = (scrollToUpload = true) => {
     clearResult();
 
     setSelectedFile(null);
+    setOutputFormat("");
     setLoading(false);
-    setError("");
+    setResetKey((value) => value + 1);
+
+    if (scrollToUpload) {
+      window.setTimeout(() => {
+        uploadRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 150);
+    }
   };
 
-  const handleFileSelect = (
-    file: File | undefined
-  ) => {
-    if (!file) {
-      return;
-    }
+  /* =======================================================
+     TOOL SELECT
+  ======================================================= */
 
+  const chooseTool = (toolId: ToolId) => {
+    setActiveTool(toolId);
+
+    resetWorkspace(false);
+
+    window.setTimeout(() => {
+      workspaceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 50);
+  };
+
+  /* =======================================================
+     FILE
+  ======================================================= */
+
+  const handleFileSelect = (file: File) => {
     clearResult();
 
-    setError("");
-    setLoading(false);
-
-    const allowedImageTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-    ];
-
-    if (!allowedImageTypes.includes(file.type)) {
-      setSelectedFile(null);
-
-      setError(
-        "Please select a JPG, PNG or WebP image."
-      );
-
-      return;
-    }
-
-    if (file.size > 25 * 1024 * 1024) {
-      setSelectedFile(null);
-
-      setError(
-        "File size must be 25 MB or less."
-      );
-
-      return;
-    }
-
     setSelectedFile(file);
+    setError("");
   };
 
   const handleRemoveFile = () => {
     resetWorkspace();
   };
 
-  const chooseTool = (
-    nextMode: ToolMode
-  ) => {
-    resetWorkspace();
-
-    setMode(nextMode);
-
-    setTimeout(() => {
-      const workspace =
-        document.getElementById(
-          "workspace"
-        );
-
-      if (!workspace) {
-        return;
-      }
-
-      const navbarOffset = 76;
-
-      const top =
-        workspace.getBoundingClientRect()
-          .top +
-        window.scrollY -
-        navbarOffset;
-
-      window.scrollTo({
-        top: Math.max(0, top),
-        behavior: "smooth",
-      });
-    }, 50);
-  };
-
-  const handleStart = () => {
-    clearResult();
-
-    setLoading(true);
-    setError("");
-  };
+  /* =======================================================
+     RESULT
+  ======================================================= */
 
   const handleResult = (
-    url: string,
-    name: string,
-    size: number,
-    message?: string
+    data: ResultData,
   ) => {
-    setDownloadUrl(url);
-    setDownloadName(name);
-    setResultSize(size);
+    if (downloadUrlRef.current) {
+      URL.revokeObjectURL(
+        downloadUrlRef.current,
+      );
+    }
+
+    downloadUrlRef.current = data.url;
+
+    setResult(data);
 
     setResultMessage(
-      message ||
-        "File processed successfully."
+      "Your file has been processed successfully.",
     );
 
-    setLoading(false);
     setError("");
+    setLoading(false);
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       resultRef.current?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
-    }, 150);
+    }, 100);
   };
 
   const handleError = (
-    message: string
+    message: string,
   ) => {
     setError(message);
+    setResult(null);
     setLoading(false);
   };
 
-  const getToolTitle = () => {
-    switch (mode) {
-      case "compress":
-        return "Compress Image";
+  const handleLoading = (
+    value: boolean,
+  ) => {
+    setLoading(value);
 
-      case "convert":
-        return "Convert Image";
-
-      case "resize":
-        return "Resize Image";
-
-      case "crop":
-        return "Crop Image";
-
-      case "images-to-pdf":
-        return "Images to PDF";
-
-      case "word-to-pdf":
-        return "Word to PDF";
-
-      case "pdf-to-word":
-        return "PDF to Word";
-
-      case "remove-background":
-        return "Remove Background";
-
-      case "merge-pdf":
-        return "Merge PDF";
-
-      default:
-        return "File Tool";
+    if (value) {
+      setError("");
+      setResult(null);
     }
   };
 
-  const isImageTool =
-    mode === "compress" ||
-    mode === "convert" ||
-    mode === "resize" ||
-    mode === "crop";
+  /* =======================================================
+     DOWNLOAD
+  ======================================================= */
 
-  const compressIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M4 7h16M4 12h16M4 17h16"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+  const handleDownload = () => {
+    if (!result?.url) {
+      return;
+    }
 
-      <path
-        d="M8 5v4M16 10v4M10 15v4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+    const link =
+      document.createElement("a");
 
-  const convertIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M7 7h10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+    link.href = result.url;
+    link.download = result.name;
 
-      <path
-        d="m14 4 3 3-3 3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    document.body.appendChild(link);
 
-      <path
-        d="M17 17H7"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+    link.click();
 
-      <path
-        d="m10 14-3 3 3 3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+    link.remove();
+  };
 
-  const resizeIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
 
-      <path
-        d="M8 5 5 8M16 5l3 3M8 19l-3-3M16 19l3-3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  const scrollToHome = () => {
+    document
+      .getElementById("home")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  };
 
-  const cropIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M7 3v14a4 4 0 0 0 4 4h10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
+  const scrollToTools = () => {
+    document
+      .getElementById("tools")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  };
 
-      <path
-        d="M3 7h14a4 4 0 0 1 4 4v10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  const scrollToHowItWorks = () => {
+    document
+      .getElementById("how-it-works")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  };
 
-  const wordPdfIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M6 3h8l4 4v14H6V3z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
+  /* =======================================================
+     ACTIVE TOOL
+  ======================================================= */
 
-      <path
-        d="M14 3v5h5"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
+  const activeToolDefinition =
+    tools.find(
+      (tool) => tool.id === activeTool,
+    );
 
-      <path
-        d="M9 12h6M9 16h6"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  /* =======================================================
+     TOOL RENDER
+  ======================================================= */
 
-  const pdfWordIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M6 3h8l4 4v14H6V3z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
+  const renderActiveTool = () => {
+    const commonProps = {
+      file: selectedFile,
+      onResult: handleResult,
+      onError: handleError,
+      onLoading: handleLoading,
+    };
 
-      <path
-        d="M14 3v5h5"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
+    switch (activeTool) {
+      case "compress":
+        return (
+          <CompressImage
+            {...commonProps}
+          />
+        );
 
-      <path
-        d="M8.5 13h7M8.5 17h7"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+      case "convert":
+        return (
+          <ConvertImage
+            file={selectedFile}
+            outputFormat={outputFormat}
+            setOutputFormat={
+              setOutputFormat
+            }
+            onResult={handleResult}
+            onError={handleError}
+            onLoading={handleLoading}
+          />
+        );
 
-  const backgroundIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <rect
-        x="3"
-        y="3"
-        width="18"
-        height="18"
-        rx="3"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
+      case "resize":
+        return (
+          <ResizeImage
+            {...commonProps}
+          />
+        );
 
-      <path
-        d="M7 17 10 13l2.5 3 2-2.5L18 17"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      case "crop":
+        return (
+          <CropImage
+            {...commonProps}
+          />
+        );
 
-      <circle
-        cx="9"
-        cy="8"
-        r="1.5"
-        fill="currentColor"
-      />
-    </svg>
-  );
+      case "images-to-pdf":
+        return (
+          <ImagesToPdf
+            {...commonProps}
+          />
+        );
 
-  const imagesPdfIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <rect
-        x="4"
-        y="3"
-        width="12"
-        height="16"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.7"
-      />
+      case "word-to-pdf":
+        return (
+          <WordToPDF
+            {...commonProps}
+          />
+        );
 
-      <path
-        d="M8 15l2.5-3 2 2 1.5-2 2 3"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      case "pdf-to-word":
+        return (
+          <PDFToWord
+            {...commonProps}
+          />
+        );
 
-      <path
-        d="M8 8h4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
+      case "remove-background":
+        return (
+          <RemoveBackground
+            {...commonProps}
+          />
+        );
 
-      <path
-        d="M16 8h4v12H8v-1"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+      case "merge-pdf":
+        return (
+          <MergePDF
+            {...commonProps}
+          />
+        );
 
-  const mergePdfIcon = (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5 sm:h-6 sm:w-6"
-    >
-      <path
-        d="M5 4h9l3 3v13H5V4z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
+      default:
+        return null;
+    }
+  };
 
-      <path
-        d="M14 4v4h4"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-
-      <path
-        d="M8 13h6M8 16h6"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-
-      <path
-        d="M18 12v6M15 15h6"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="app">
 
-      <Navbar />
+      <Navbar
+        activeSection={activeSection}
+        onHomeClick={scrollToHome}
+        onToolsClick={scrollToTools}
+        onHowItWorksClick={
+          scrollToHowItWorks
+        }
+      />
 
       <main>
 
-        <section className="px-4 pb-9 pt-9 sm:px-6 sm:pb-12 sm:pt-12">
-          <div className="mx-auto max-w-5xl text-center">
+        {/* HERO */}
 
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
-              Filevixo
-            </p>
+        <Hero />
 
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl">
-              File tools, made simple.
-            </h1>
-
-            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:mt-4 sm:text-base">
-              Choose a tool and get started instantly.
-            </p>
-
-          </div>
-        </section>
+        {/* TOOLS */}
 
         <section
           id="tools"
-          className="px-4 pb-10 sm:px-6 sm:pb-14"
+          className="tools-section"
         >
-          <div className="mx-auto max-w-7xl">
+          <div className="tools-container">
 
-            <div className="mb-7">
+            <div className="tools-heading">
 
-              <div className="mb-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-600">
-                  Image Tools
-                </p>
+              <span className="section-label">
+                FILE TOOLS
+              </span>
 
-                <h2 className="mt-1 text-lg font-bold text-slate-950 sm:text-xl">
-                  Work with images
-                </h2>
-              </div>
+              <h2>
+                Everything you need
+                <br />
+                for your files.
+              </h2>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <p>
+                Choose a tool and start
+                working with your file.
+              </p>
 
-                <ToolCard
-                  title="Compress Image"
-                  description="Reduce image file size while maintaining good quality."
-                  category="Image Tools"
-                  color="blue"
-                  icon={compressIcon}
-                  onClick={() =>
-                    chooseTool("compress")
-                  }
-                />
-
-                <ToolCard
-                  title="Convert Image"
-                  description="Convert images between JPG, PNG and WebP."
-                  category="Image Tools"
-                  color="blue"
-                  icon={convertIcon}
-                  onClick={() =>
-                    chooseTool("convert")
-                  }
-                />
-
-                <ToolCard
-                  title="Resize Image"
-                  description="Resize images to your required dimensions."
-                  category="Image Tools"
-                  color="blue"
-                  icon={resizeIcon}
-                  onClick={() =>
-                    chooseTool("resize")
-                  }
-                />
-
-                <ToolCard
-                  title="Crop Image"
-                  description="Crop images using flexible aspect ratios."
-                  category="Image Tools"
-                  color="blue"
-                  icon={cropIcon}
-                  onClick={() =>
-                    chooseTool("crop")
-                  }
-                />
-
-              </div>
             </div>
 
-            <div className="mb-7">
+            <div className="tools-categories">
 
-              <div className="mb-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-violet-600">
-                  Document Conversion
-                </p>
+              <ToolCategory
+                title="Image Tools"
+                category="Image Tools"
+                tools={tools}
+                activeTool={activeTool}
+                onSelect={chooseTool}
+              />
 
-                <h2 className="mt-1 text-lg font-bold text-slate-950 sm:text-xl">
-                  Convert documents
-                </h2>
-              </div>
+              <ToolCategory
+                title="Document Tools"
+                category="Document Tools"
+                tools={tools}
+                activeTool={activeTool}
+                onSelect={chooseTool}
+              />
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <ToolCategory
+                title="AI Tools"
+                category="AI Tools"
+                tools={tools}
+                activeTool={activeTool}
+                onSelect={chooseTool}
+              />
 
-                <ToolCard
-                  title="Word to PDF"
-                  description="Convert Word documents into PDF files."
-                  category="Document Conversion"
-                  color="violet"
-                  icon={wordPdfIcon}
-                  onClick={() =>
-                    chooseTool("word-to-pdf")
-                  }
-                />
+              <ToolCategory
+                title="PDF Tools"
+                category="PDF Tools"
+                tools={tools}
+                activeTool={activeTool}
+                onSelect={chooseTool}
+              />
 
-                <ToolCard
-                  title="PDF to Word"
-                  description="Convert PDF documents into editable Word files."
-                  category="Document Conversion"
-                  color="violet"
-                  icon={pdfWordIcon}
-                  onClick={() =>
-                    chooseTool("pdf-to-word")
-                  }
-                />
-
-              </div>
-            </div>
-
-            <div className="mb-7">
-
-              <div className="mb-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-600">
-                  Image AI
-                </p>
-
-                <h2 className="mt-1 text-lg font-bold text-slate-950 sm:text-xl">
-                  AI-powered image tools
-                </h2>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-
-                <ToolCard
-                  title="Remove Background"
-                  description="Remove image backgrounds and create transparent PNGs."
-                  category="Image AI"
-                  color="emerald"
-                  icon={backgroundIcon}
-                  onClick={() =>
-                    chooseTool(
-                      "remove-background"
-                    )
-                  }
-                />
-
-              </div>
-            </div>
-
-            <div>
-
-              <div className="mb-3">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-orange-600">
-                  PDF Tools
-                </p>
-
-                <h2 className="mt-1 text-lg font-bold text-slate-950 sm:text-xl">
-                  Manage PDF files
-                </h2>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-
-                <ToolCard
-                  title="Images to PDF"
-                  description="Combine images into a single PDF document."
-                  category="PDF Tools"
-                  color="orange"
-                  icon={imagesPdfIcon}
-                  onClick={() =>
-                    chooseTool(
-                      "images-to-pdf"
-                    )
-                  }
-                />
-
-                <ToolCard
-                  title="Merge PDF"
-                  description="Combine multiple PDF files into one document."
-                  category="PDF Tools"
-                  color="orange"
-                  icon={mergePdfIcon}
-                  onClick={() =>
-                    chooseTool("merge-pdf")
-                  }
-                />
-
-              </div>
             </div>
 
           </div>
         </section>
 
+        {/* WORKSPACE */}
+
         <section
           id="workspace"
-          className={`
-            scroll-mt-20
-            border-y
-            border-slate-200
-            bg-white
-            px-4
-            sm:px-6
-            ${
-              mode === "remove-background"
-                ? "py-3 sm:py-5"
-                : "py-6 sm:py-8"
-            }
-          `}
+          className="workspace-section"
+          ref={workspaceRef}
         >
-          <div className="mx-auto max-w-4xl">
+          <div className="workspace-container">
 
-            {mode !== "remove-background" && (
-              <div className="mb-4 text-center sm:mb-5">
+            {/* WORD TO PDF HAS NO EXTRA WORKSPACE HEADING */}
 
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">
-                  Workspace
-                </p>
+            {activeTool !== "word-to-pdf" &&
+              activeTool !== "pdf-to-word" &&
+              activeTool !== "remove-background" &&
+              activeTool !== "images-to-pdf" &&
+              activeTool !== "merge-pdf" && (
+              <div className="workspace-heading">
 
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
-                  {getToolTitle()}
+                <span className="section-label">
+                  WORKSPACE
+                </span>
+
+                <h2>
+                  {activeToolDefinition?.title}
                 </h2>
+
+                <p>
+                  {activeToolDefinition?.description}
+                </p>
 
               </div>
             )}
 
-            {isImageTool && (
-              <div className="mb-3">
+            {/* The Images to PDF and Merge PDF tools have their own multi-file uploaders. */}
+            {activeTool !== "merge-pdf" &&
+              activeTool !== "images-to-pdf" && (
+              <div
+                className="workspace-upload"
+                ref={uploadRef}
+              >
+
                 <UploadBox
-                  selectedFile={selectedFile}
+                  file={selectedFile}
                   onFileSelect={
                     handleFileSelect
                   }
                   onRemove={
                     handleRemoveFile
                   }
+                  accept={
+                    activeTool === "word-to-pdf"
+                      ? ".doc,.docx"
+                      : activeTool === "pdf-to-word"
+                        ? ".pdf"
+                        : "image/*"
+                  }
+                  maxSizeMB={25}
                 />
+
               </div>
-            )}
-
-            {mode === "compress" && (
-              <CompressImage
-                selectedFile={selectedFile}
-                loading={loading}
-                onStart={handleStart}
-                onResult={(
-                  url,
-                  name,
-                  size
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    "Image compressed successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "convert" && (
-              <ConvertImage
-                selectedFile={selectedFile}
-                loading={loading}
-                outputFormat={
-                  outputFormat
-                }
-                setOutputFormat={
-                  setOutputFormat
-                }
-                onResult={(
-                  url,
-                  name,
-                  size
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    "Image converted successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "resize" && (
-              <ResizeImage
-                selectedFile={selectedFile}
-                loading={loading}
-                onStart={handleStart}
-                onResult={(
-                  url,
-                  name,
-                  size
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    "Image resized successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "crop" && (
-              <CropImage
-                selectedFile={selectedFile}
-                loading={loading}
-                onStart={handleStart}
-                onResult={(
-                  url,
-                  name,
-                  size
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    "Image cropped successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "remove-background" && (
-              <RemoveBackground
-                selectedFile={selectedFile}
-                loading={loading}
-                onFileSelect={
-                  handleFileSelect
-                }
-                onStart={handleStart}
-                onError={handleError}
-              />
-            )}
-
-            {mode === "images-to-pdf" && (
-              <ImagesToPdf
-                loading={loading}
-                onStart={handleStart}
-                onResult={(
-                  url,
-                  name,
-                  size,
-                  message
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    message ||
-                      "PDF created successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "word-to-pdf" && (
-              <WordToPDF
-                onResult={(
-                  url,
-                  name,
-                  size,
-                  message
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    message ||
-                      "PDF created successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "pdf-to-word" && (
-              <PDFToWord
-                onResult={(
-                  url,
-                  name,
-                  size,
-                  message
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    message ||
-                      "Word document created successfully."
-                  )
-                }
-                onError={handleError}
-              />
-            )}
-
-            {mode === "merge-pdf" && (
-              <MergePDF
-                onResult={(
-                  url,
-                  name,
-                  size,
-                  message
-                ) =>
-                  handleResult(
-                    url,
-                    name,
-                    size,
-                    message ||
-                      "PDF files merged successfully."
-                  )
-                }
-                onError={handleError}
-              />
             )}
 
             {error && (
-              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
-                {error}
+              <div
+                className="app-error"
+                role="alert"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+
+                  <path
+                    d="M12 7v6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+
+                  <circle
+                    cx="12"
+                    cy="16.5"
+                    r="1"
+                    fill="currentColor"
+                  />
+                </svg>
+
+                <span>{error}</span>
               </div>
             )}
 
-            {downloadUrl &&
-              downloadName &&
-              mode !==
-                "remove-background" &&
-              mode !== "crop" &&
-              mode !== "merge-pdf" && (
-                <div
-                  ref={resultRef}
-                  className="mt-4 scroll-mt-24"
-                >
-                  <ResultBox
-                    downloadUrl={
-                      downloadUrl
-                    }
-                    downloadName={
-                      downloadName
-                    }
-                    resultSize={
-                      resultSize
-                    }
-                    message={
-                      resultMessage
-                    }
-                  />
-                </div>
-              )}
-
-          </div>
-        </section>
-
-        <section
-          id="how-it-works"
-          className="px-4 py-12 sm:px-6 sm:py-16"
-        >
-          <div className="mx-auto max-w-6xl">
-
-            <div className="text-center">
-
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">
-                How It Works
-              </p>
-
-              <h2 className="mt-2 text-2xl font-bold text-slate-950 sm:text-3xl">
-                Simple from start to finish
-              </h2>
-
+            <div
+              className="active-tool-container"
+              ref={
+                activeTool === "images-to-pdf" ||
+                activeTool === "merge-pdf"
+                  ? uploadRef
+                  : undefined
+              }
+              key={`${activeTool}-${resetKey}`}
+            >
+              {renderActiveTool()}
             </div>
 
-            <div className="mt-8 grid gap-7 md:grid-cols-3">
+            {loading && (
+              <div className="workspace-loading">
+                <span className="workspace-spinner" />
 
-              {[
-                [
-                  "01",
-                  "Upload",
-                  "Choose your file or image and upload it securely.",
-                ],
-                [
-                  "02",
-                  "Process",
-                  "Select the tool and configure the settings you need.",
-                ],
-                [
-                  "03",
-                  "Download",
-                  "Download your processed file when it is ready.",
-                ],
-              ].map(
-                ([
-                  number,
-                  title,
-                  description,
-                ]) => (
-                  <div
-                    key={number}
-                    className="text-center"
-                  >
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-                      {number}
-                    </div>
+                <span>
+                  Processing your file...
+                </span>
+              </div>
+            )}
 
-                    <h3 className="mt-4 text-lg font-bold text-slate-950">
-                      {title}
-                    </h3>
-
-                    <p className="mx-auto mt-1.5 max-w-xs text-sm leading-6 text-slate-600">
-                      {description}
-                    </p>
-                  </div>
-                )
-              )}
-
-            </div>
-          </div>
-        </section>
-
-        <section
-          id="security"
-          className="bg-slate-950 px-4 py-12 text-white sm:px-6 sm:py-16"
-        >
-          <div className="mx-auto max-w-4xl text-center">
-
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
-
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                className="h-6 w-6"
-              >
-                <path
-                  d="M12 3l7 3v5c0 4.5-2.9 8.5-7 10-4.1-1.5-7-5.5-7-10V6l7-3z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
+            <div ref={resultRef} style={{ marginTop: "24px" }}>
+              {activeTool === "remove-background" &&
+              result?.url &&
+              selectedFile ? (
+                <RemoveBackgroundResultPreview
+                  originalUrl={
+                    originalPreviewUrl
+                  }
+                  resultUrl={result.url}
+                  originalName={
+                    selectedFile.name
+                  }
+                  originalSize={
+                    selectedFile.size
+                  }
+                  resultName={
+                    result.name
+                  }
+                  resultSize={
+                    result.size
+                  }
+                  onDownload={
+                    handleDownload
+                  }
+                  onReset={
+                    resetWorkspace
+                  }
                 />
-
-                <path
-                  d="M9 12l2 2 4-4"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+              ) : (
+                <ResultBox
+                  url={result?.url || null}
+                  fileName={
+                    result?.name || ""
+                  }
+                  fileSize={
+                    result?.size
+                  }
+                  message={
+                    resultMessage
+                  }
+                  onDownload={
+                    handleDownload
+                  }
+                  onReset={
+                    resetWorkspace
+                  }
                 />
-              </svg>
-
+              )}
             </div>
-
-            <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
-              Built with security in mind
-            </h2>
-
-            <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-slate-300">
-              Filevixo uses server-side validation,
-              temporary processing files and controlled
-              file handling to help keep your files protected.
-            </p>
 
           </div>
         </section>
+
+        {/* HOW IT WORKS */}
+
+        <HowItWorks />
+
+        {/* SECURITY */}
+
+        <Security />
 
       </main>
 
-      <footer className="border-t border-slate-200 bg-white px-4 py-8 sm:px-6">
-
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 md:flex-row md:items-center md:justify-between">
-
-          <div className="text-center md:text-left">
-
-            <img
-              src="/logo.png"
-              alt="Filevixo"
-              className="mx-auto w-[140px] object-contain md:mx-0"
-            />
-
-            <p className="mt-2 max-w-sm text-sm leading-5 text-slate-500">
-              Simple, secure online tools for working
-              with images and documents.
-            </p>
-
-          </div>
-
-          <div className="text-center md:text-right">
-
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
-              Business Contact
-            </p>
-
-            <a
-              href="mailto:anilrasuri17@gmail.com"
-              className="mt-1.5 inline-block text-sm font-semibold text-slate-700 transition hover:text-blue-600"
-            >
-              anilrasuri17@gmail.com
-            </a>
-
-          </div>
-
-        </div>
-
-        <div className="mx-auto mt-6 max-w-7xl border-t border-slate-100 pt-4 text-center">
-
-          <p className="text-xs text-slate-400">
-            © 2026 Filevixo. All rights reserved.
-          </p>
-
-        </div>
-
-      </footer>
+      <Footer />
 
     </div>
   );
