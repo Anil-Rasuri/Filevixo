@@ -136,7 +136,6 @@ function createAspectCrop(
     height: cropHeight,
     x: (100 - cropWidth) / 2,
     y: (100 - cropHeight) / 2,
-    aspect,
   };
 }
 

@@ -31,23 +31,14 @@ const DOCUMENT_EXTENSIONS = [
   "docx",
 ];
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+export default function UploadBox(props: UploadBoxProps) {
+  const {
+    file,
+    onFileSelect,
+    accept = "*/*",
+    maxSizeMB = 25,
+  } = props;
 
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-export default function UploadBox({
-  file,
-  onFileSelect,
-  onRemove,
-  accept = "*/*",
-  maxSizeMB = 25,
-}: UploadBoxProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState("");
 

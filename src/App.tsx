@@ -26,7 +26,7 @@ import ImagesToPdf from "./tools/ImagesToPdf/ImagesToPdf.tsx";
 import WordToPDF from "./tools/WordToPdf/WordToPdf.tsx";
 import PDFToWord from "./tools/PDFToWord/PDFToWord.tsx";
 import RemoveBackground from "./tools/RemoveBackground/RemoveBackground.tsx";
-import MergePDF from "./tools/MergePDF/MergePDF.tsx";
+import MergePDF from "./tools/MergePdf/MergePdf.tsx";
 
 type ToolId =
   | "compress"
