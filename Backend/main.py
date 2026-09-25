@@ -16,7 +16,19 @@ from routers.remove_background import router as remove_background_router
 from routers.merge_pdf import router as merge_pdf_router
 
 
-app = FastAPI(title="Filevixo API", version="1.0.0")
+# ============================================================
+# APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="Filevixo API",
+    version="1.0.0",
+)
+
+
+# ============================================================
+# CORS
+# ============================================================
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,6 +37,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================================
+# ROUTES
+# ============================================================
 
 app.include_router(compress_router)
 app.include_router(convert_router)
@@ -37,46 +54,89 @@ app.include_router(remove_background_router)
 app.include_router(merge_pdf_router)
 
 
+# ============================================================
+# ROOT
+# ============================================================
+
 @app.get("/")
 async def root():
-    return {"name": "Filevixo API", "status": "running", "version": "1.0.0"}
-
-
-@app.get("/health")
-async def health():
-    if not core.REMBG_AVAILABLE:
-        background_status = "unavailable"
-    elif core.remove_bg_session is not None:
-        background_status = "ready"
-    else:
-        background_status = "available"
     return {
-        "status": "ok",
-        "background_removal": background_status,
-        "background_model": core.REMOVE_BG_MODEL if core.REMBG_AVAILABLE else None,
+        "name": "Filevixo API",
+        "status": "running",
+        "version": "1.0.0",
     }
 
 
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+@app.get("/health")
+async def health():
+    knockout_configured = bool(
+        os.getenv("KNOCKOUT_TOKEN")
+    )
+
+    return {
+        "status": "ok",
+        "background_removal": (
+            "configured"
+            if knockout_configured
+            else "not_configured"
+        ),
+        "background_provider": "knockout",
+    }
+
+
+# ============================================================
+# STARTUP
+# ============================================================
+
 @app.on_event("startup")
 async def startup_event():
+
     core.cleanup_old_temp_files()
+
     print("\n" + "=" * 60)
     print("Filevixo API")
     print("=" * 60)
-    print("Environment:", "Render" if os.getenv("RENDER") else "Local")
-    print("Frontend URL:", core.FRONTEND_URL or "localhost development")
-    print("Background model:", core.REMOVE_BG_MODEL)
-    print("Background model loading: lazy")
-    print("Background max dimension:", core.REMOVE_BG_MAX_DIMENSION)
+
+    print(
+        "Environment:",
+        "Render" if os.getenv("RENDER") else "Local",
+    )
+
+    print(
+        "Frontend URL:",
+        core.FRONTEND_URL
+        or "localhost development",
+    )
+
+    print(
+        "Background removal provider:",
+        "Knockout",
+    )
+
+    print(
+        "Knockout configured:",
+        "yes" if os.getenv("KNOCKOUT_TOKEN") else "no",
+    )
+
     print("\nAvailable routes:")
+
     for route in [
-        "POST /api/compress-image", "POST /api/convert-image",
-        "POST /api/resize-image", "POST /api/crop-image",
-        "POST /api/images-to-pdf", "POST /api/word-to-pdf",
-        "POST /api/pdf-to-word", "POST /api/remove-background",
+        "POST /api/compress-image",
+        "POST /api/convert-image",
+        "POST /api/resize-image",
+        "POST /api/crop-image",
+        "POST /api/images-to-pdf",
+        "POST /api/word-to-pdf",
+        "POST /api/pdf-to-word",
+        "POST /api/remove-background",
         "POST /api/merge-pdf",
     ]:
         print(route)
+
     print("\nHealth: /health")
     print("Docs: /docs")
     print("=" * 60 + "\n")

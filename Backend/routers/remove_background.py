@@ -1,9 +1,18 @@
-from fastapi import APIRouter
+import os
 
-from utils.core import *
+import httpx
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+from fastapi.responses import Response
 
+from utils.core import (
+    MAX_IMAGE_SIZE,
+    delete_file,
+    validate_image_upload,
+)
 
 router = APIRouter()
+
+KNOCKOUT_URL = "https://useknockout--api.modal.run/remove"
 
 
 @router.post("/api/remove-background")
@@ -11,151 +20,165 @@ async def remove_background(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    if not REMBG_AVAILABLE:
+    token = os.getenv("KNOCKOUT_TOKEN")
+
+    if not token:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "Background removal engine "
-                "is not installed."
-            ),
+            detail="Background removal service is not configured.",
         )
 
     validate_image_upload(file)
 
-    data = await read_uploaded_bytes(
-        file,
-        MAX_IMAGE_SIZE,
-    )
+    data = await file.read()
 
-    image = open_image_from_bytes(
-        data
-    )
+    if not data:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty.",
+        )
 
-    working_image = image
-    output_image = None
+    if len(data) > MAX_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="Image file is too large.",
+        )
+
+    filename = file.filename or "image.jpg"
+    content_type = file.content_type or "application/octet-stream"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+
+    files = {
+        "file": (
+            filename,
+            data,
+            content_type,
+        )
+    }
+
+    form_data = {
+        "format": "png",
+        "matting": "closed-form",
+        "edge": "soft",
+    }
 
     try:
-        if working_image.mode not in (
-            "RGB",
-            "RGBA",
-        ):
-            converted = working_image.convert(
-                "RGBA"
-            )
-
-            working_image.close()
-
-            working_image = converted
-
-        resized_image = (
-            resize_for_background_removal(
-                working_image
-            )
+        # Knockout can have a cold GPU start, so allow enough time
+        # for the first request after inactivity.
+        timeout = httpx.Timeout(
+            connect=30.0,
+            read=180.0,
+            write=60.0,
+            pool=30.0,
         )
 
-        if resized_image is not working_image:
-            working_image.close()
-            working_image = resized_image
-
-        session = get_remove_bg_session()
-
-        if session is None:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Background removal AI model "
-                    "could not be loaded."
-                ),
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                KNOCKOUT_URL,
+                headers=headers,
+                files=files,
+                data=form_data,
             )
 
-        output_image = rembg_remove(
-            working_image,
-            session=session,
-            post_process_mask=True,
-            decontaminate=True,
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Background removal service timed out. "
+                "Please try again."
+            ),
         )
 
-    except HTTPException:
-        raise
-
-    except Exception as error:
+    except httpx.RequestError as error:
         print(
-            "[Filevixo] Background removal error: "
+            "[Filevixo] Knockout connection error: "
             f"{error}"
         )
 
         raise HTTPException(
-            status_code=500,
+            status_code=502,
             detail=(
-                "AI background removal failed: "
-                f"{error}"
+                "Could not connect to the "
+                "background removal service."
             ),
         )
 
-    finally:
+    if response.status_code != 200:
+        print(
+            "[Filevixo] Knockout API error "
+            f"{response.status_code}: "
+            f"{response.text[:1000]}"
+        )
+
         try:
-            working_image.close()
+            error_data = response.json()
+            error_detail = error_data.get(
+                "detail",
+                "Background removal failed.",
+            )
         except Exception:
-            pass
+            error_detail = (
+                "Background removal service "
+                f"returned HTTP {response.status_code}."
+            )
 
-    if output_image is None:
+        if response.status_code == 401:
+            error_detail = (
+                "Background removal service "
+                "authentication failed."
+            )
+
+        elif response.status_code == 402:
+            error_detail = (
+                "Background removal free usage "
+                "limit has been reached."
+            )
+
+        elif response.status_code == 413:
+            error_detail = (
+                "The image is too large for "
+                "background removal."
+            )
+
+        elif response.status_code == 422:
+            error_detail = (
+                "No clear foreground subject "
+                "could be detected."
+            )
+
+        elif response.status_code == 429:
+            error_detail = (
+                "Background removal service is "
+                "temporarily rate limited. "
+                "Please try again shortly."
+            )
+
         raise HTTPException(
-            status_code=500,
+            status_code=502,
+            detail=error_detail,
+        )
+
+    output = response.content
+
+    if not output:
+        raise HTTPException(
+            status_code=502,
             detail=(
-                "Background removal did not "
-                "produce an output image."
+                "Background removal service "
+                "returned an empty image."
             ),
         )
 
-    if output_image.mode != "RGBA":
-        converted = output_image.convert(
-            "RGBA"
-        )
-
-        output_image.close()
-
-        output_image = converted
-
-    output_path = get_unique_output_path(
-        "png",
-        "filevixo-background-removed",
-    )
-
-    try:
-        output_image.save(
-            output_path,
-            format="PNG",
-            optimize=True,
-        )
-
-    except Exception as error:
-        delete_file(
-            str(output_path)
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Could not save background "
-                f"removed image: {error}"
-            ),
-        )
-
-    finally:
-        try:
-            output_image.close()
-        except Exception:
-            pass
-
-    background_tasks.add_task(
-        delete_file,
-        str(output_path),
-    )
-
-    return FileResponse(
-        path=output_path,
+    return Response(
+        content=output,
         media_type="image/png",
-        filename=(
-            "filevixo-background-removed.png"
-        ),
+        headers={
+            "Content-Disposition": (
+                'attachment; '
+                'filename="filevixo-background-removed.png"'
+            )
+        },
     )

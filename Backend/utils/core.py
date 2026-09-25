@@ -2,9 +2,6 @@ from pathlib import Path
 from typing import List, Optional
 from threading import Lock
 
-# Serialize memory-heavy operations.
-HEAVY_OPERATION_LOCK = Lock()
-
 import gc
 import io
 import os
@@ -24,6 +21,13 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from PIL import Image
+
+
+# ============================================================
+# SERIALIZE MEMORY-HEAVY OPERATIONS
+# ============================================================
+
+HEAVY_OPERATION_LOCK = Lock()
 
 
 # ============================================================
@@ -48,23 +52,8 @@ except ImportError:
 
 
 # ============================================================
-# OPTIONAL BACKGROUND REMOVAL
+# ENVIRONMENT / CORS
 # ============================================================
-
-# IMPORTANT:
-# Do NOT import rembg here.
-#
-# rembg brings a relatively heavy dependency stack including
-# ONNX Runtime, SciPy, scikit-image, NumPy, etc.
-#
-# We load rembg only when the background-removal endpoint
-# actually needs it.
-
-REMBG_AVAILABLE = True
-
-new_session = None
-rembg_remove = None
-
 
 FRONTEND_URL = os.getenv(
     "FRONTEND_URL",
@@ -108,115 +97,6 @@ MAX_TOTAL_MERGE_SIZE = 100 * 1024 * 1024
 
 # Protect against extremely large decompressed images.
 Image.MAX_IMAGE_PIXELS = 40_000_000
-
-
-# ============================================================
-# BACKGROUND REMOVAL
-# ============================================================
-
-# Render Free has limited RAM.
-#
-# The lighter model is used by default.
-#
-# You can later change this through an environment variable:
-#
-# REMOVE_BG_MODEL=birefnet-general
-#
-# when using a larger server.
-
-REMOVE_BG_MODEL = os.getenv(
-    "REMOVE_BG_MODEL",
-    "birefnet-general-lite",
-).strip()
-
-
-try:
-    REMOVE_BG_MAX_DIMENSION = int(
-        os.getenv(
-            "REMOVE_BG_MAX_DIMENSION",
-            "1500",
-        )
-    )
-except ValueError:
-    REMOVE_BG_MAX_DIMENSION = 2500
-
-
-REMOVE_BG_MAX_DIMENSION = max(
-    500,
-    min(
-        REMOVE_BG_MAX_DIMENSION,
-        5000,
-    ),
-)
-
-
-remove_bg_session = None
-remove_bg_lock = Lock()
-
-
-def get_remove_bg_session():
-    """
-    Load rembg and its AI model only when the background-removal
-    endpoint is actually used.
-
-    This keeps normal Filevixo startup memory usage lower.
-    """
-
-    global remove_bg_session
-    global new_session
-    global rembg_remove
-    global REMBG_AVAILABLE
-
-    if remove_bg_session is not None:
-        return remove_bg_session
-
-    with remove_bg_lock:
-
-        if remove_bg_session is not None:
-            return remove_bg_session
-
-        try:
-            print(
-                "[Filevixo] Loading background removal engine..."
-            )
-
-            # Lazy import:
-            # rembg and its heavy dependencies are loaded only
-            # when background removal is actually requested.
-            from rembg import (
-                new_session as rembg_new_session,
-                remove as rembg_remove_function,
-            )
-
-            new_session = rembg_new_session
-            rembg_remove = rembg_remove_function
-
-            print(
-                "[Filevixo] Loading background removal model: "
-                f"{REMOVE_BG_MODEL}"
-            )
-
-            remove_bg_session = new_session(
-                REMOVE_BG_MODEL
-            )
-
-        except Exception as error:
-
-            REMBG_AVAILABLE = False
-
-            print(
-                "[Filevixo] Background removal engine/model "
-                f"could not be loaded: {error}"
-            )
-
-            raise
-
-        print(
-            "[Filevixo] Background removal model ready: "
-            f"{REMOVE_BG_MODEL}"
-        )
-
-    return remove_bg_session
 
 
 # ============================================================
@@ -443,8 +323,12 @@ def compress_image_to_target_size(
     """
     Encode an image until the output is at or below target_bytes.
 
-    JPEG/WebP: lower quality first, then progressively reduce dimensions.
-    PNG: use maximum PNG compression, then progressively reduce dimensions.
+    JPEG/WebP:
+        Lower quality first, then progressively reduce dimensions.
+
+    PNG:
+        Maximum PNG compression, then progressively reduce dimensions.
+
     The returned file is always checked from disk before it is returned.
     """
 
@@ -591,8 +475,8 @@ def compress_image_to_target_size(
         )
 
         raise ValueError(
-            "The requested maximum size is too small to produce a valid image. "
-            "Please choose a larger target size."
+            "The requested maximum size is too small to produce "
+            "a valid image. Please choose a larger target size."
         )
 
     finally:
@@ -614,7 +498,6 @@ def find_libreoffice() -> Optional[str]:
     """
 
     candidates = [
-
         # Linux / Render
         "/usr/bin/soffice",
         "/usr/local/bin/soffice",
@@ -637,53 +520,6 @@ def find_libreoffice() -> Optional[str]:
         return system_path
 
     return None
-
-
-def resize_for_background_removal(
-    image: Image.Image,
-) -> Image.Image:
-    """
-    Reduce very large images before AI processing
-    to reduce memory usage.
-    """
-
-    max_dimension = max(
-        image.width,
-        image.height,
-    )
-
-    if max_dimension <= REMOVE_BG_MAX_DIMENSION:
-        return image
-
-    ratio = (
-        REMOVE_BG_MAX_DIMENSION
-        / max_dimension
-    )
-
-    new_size = (
-        max(
-            1,
-            int(
-                image.width * ratio
-            ),
-        ),
-        max(
-            1,
-            int(
-                image.height * ratio
-            ),
-        ),
-    )
-
-    print(
-        "[Filevixo] Resizing background-removal input "
-        f"from {image.size} to {new_size}"
-    )
-
-    return image.resize(
-        new_size,
-        Image.Resampling.LANCZOS,
-    )
 
 
 def validate_image_upload(
