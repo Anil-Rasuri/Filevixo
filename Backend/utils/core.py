@@ -51,14 +51,19 @@ except ImportError:
 # OPTIONAL BACKGROUND REMOVAL
 # ============================================================
 
-try:
-    from rembg import new_session, remove as rembg_remove
+# IMPORTANT:
+# Do NOT import rembg here.
+#
+# rembg brings a relatively heavy dependency stack including
+# ONNX Runtime, SciPy, scikit-image, NumPy, etc.
+#
+# We load rembg only when the background-removal endpoint
+# actually needs it.
 
-    REMBG_AVAILABLE = True
-except ImportError:
-    new_session = None
-    rembg_remove = None
-    REMBG_AVAILABLE = False
+REMBG_AVAILABLE = True
+
+new_session = None
+rembg_remove = None
 
 
 FRONTEND_URL = os.getenv(
@@ -66,13 +71,16 @@ FRONTEND_URL = os.getenv(
     "",
 ).strip().rstrip("/")
 
+
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
+
 if FRONTEND_URL:
     ALLOWED_ORIGINS.append(FRONTEND_URL)
+
 
 # ============================================================
 # DIRECTORIES
@@ -121,6 +129,7 @@ REMOVE_BG_MODEL = os.getenv(
     "birefnet-general-lite",
 ).strip()
 
+
 try:
     REMOVE_BG_MAX_DIMENSION = int(
         os.getenv(
@@ -131,6 +140,7 @@ try:
 except ValueError:
     REMOVE_BG_MAX_DIMENSION = 2500
 
+
 REMOVE_BG_MAX_DIMENSION = max(
     500,
     min(
@@ -139,49 +149,72 @@ REMOVE_BG_MAX_DIMENSION = max(
     ),
 )
 
+
 remove_bg_session = None
 remove_bg_lock = Lock()
 
 
 def get_remove_bg_session():
     """
-    Load the rembg model only when the background-removal
+    Load rembg and its AI model only when the background-removal
     endpoint is actually used.
 
-    This avoids loading a large AI model during normal
-    application startup.
+    This keeps normal Filevixo startup memory usage lower.
     """
 
     global remove_bg_session
-
-    if not REMBG_AVAILABLE:
-        return None
+    global new_session
+    global rembg_remove
+    global REMBG_AVAILABLE
 
     if remove_bg_session is not None:
         return remove_bg_session
 
     with remove_bg_lock:
-        if remove_bg_session is None:
+
+        if remove_bg_session is not None:
+            return remove_bg_session
+
+        try:
+            print(
+                "[Filevixo] Loading background removal engine..."
+            )
+
+            # Lazy import:
+            # rembg and its heavy dependencies are loaded only
+            # when background removal is actually requested.
+            from rembg import (
+                new_session as rembg_new_session,
+                remove as rembg_remove_function,
+            )
+
+            new_session = rembg_new_session
+            rembg_remove = rembg_remove_function
+
             print(
                 "[Filevixo] Loading background removal model: "
                 f"{REMOVE_BG_MODEL}"
             )
 
-            try:
-                remove_bg_session = new_session(
-                    REMOVE_BG_MODEL
-                )
-            except Exception as error:
-                print(
-                    "[Filevixo] Background removal model "
-                    f"could not be loaded: {error}"
-                )
-                raise
+            remove_bg_session = new_session(
+                REMOVE_BG_MODEL
+            )
+
+        except Exception as error:
+
+            REMBG_AVAILABLE = False
 
             print(
-                "[Filevixo] Background removal model ready: "
-                f"{REMOVE_BG_MODEL}"
+                "[Filevixo] Background removal engine/model "
+                f"could not be loaded: {error}"
             )
+
+            raise
+
+        print(
+            "[Filevixo] Background removal model ready: "
+            f"{REMOVE_BG_MODEL}"
+        )
 
     return remove_bg_session
 
@@ -256,11 +289,14 @@ def cleanup_old_temp_files() -> None:
     """
 
     try:
+
         if not TEMP_DIR.exists():
             return
 
         for item in TEMP_DIR.iterdir():
+
             try:
+
                 if item.is_file():
                     item.unlink()
 
@@ -271,12 +307,14 @@ def cleanup_old_temp_files() -> None:
                     )
 
             except Exception as error:
+
                 print(
                     "[Filevixo] Could not clean "
                     f"{item}: {error}"
                 )
 
     except Exception as error:
+
         print(
             "[Filevixo] Temporary cleanup failed: "
             f"{error}"
@@ -320,6 +358,7 @@ def open_image_from_bytes(
     """
 
     try:
+
         image = Image.open(
             io.BytesIO(data)
         )
@@ -329,18 +368,21 @@ def open_image_from_bytes(
         return image
 
     except Image.DecompressionBombError:
+
         raise HTTPException(
             status_code=400,
             detail="Image dimensions are too large.",
         )
 
     except Image.DecompressionBombWarning:
+
         raise HTTPException(
             status_code=400,
             detail="Image dimensions are too large.",
         )
 
     except Exception:
+
         raise HTTPException(
             status_code=400,
             detail="Invalid or unsupported image file.",
@@ -359,6 +401,7 @@ def normalize_image(
         "RGBA",
         "LA",
     ):
+
         rgba_image = (
             image.convert("RGBA")
             if image.mode != "RGBA"
@@ -404,81 +447,164 @@ def compress_image_to_target_size(
     PNG: use maximum PNG compression, then progressively reduce dimensions.
     The returned file is always checked from disk before it is returned.
     """
+
     if target_bytes <= 0:
-        raise ValueError("Target size must be greater than zero.")
+        raise ValueError(
+            "Target size must be greater than zero."
+        )
 
     output_format = output_format.lower()
+
     if output_format == "jpeg":
         output_format = "jpg"
 
-    if output_format not in {"jpg", "png", "webp"}:
-        raise ValueError("Unsupported output format.")
+    if output_format not in {
+        "jpg",
+        "png",
+        "webp",
+    }:
+        raise ValueError(
+            "Unsupported output format."
+        )
 
-    working = normalize_image(image) if output_format == "jpg" else image
+    working = (
+        normalize_image(image)
+        if output_format == "jpg"
+        else image
+    )
+
     owns_working = working is not image
+
     current = working
     owns_current = owns_working
 
     try:
+
         for _ in range(15):
-            if output_format in {"jpg", "webp"}:
-                for quality in range(90, 4, -5):
-                    delete_file(str(output_path))
-                    save_format = "JPEG" if output_format == "jpg" else "WEBP"
+
+            if output_format in {
+                "jpg",
+                "webp",
+            }:
+
+                for quality in range(
+                    90,
+                    4,
+                    -5,
+                ):
+
+                    delete_file(
+                        str(output_path)
+                    )
+
+                    save_format = (
+                        "JPEG"
+                        if output_format == "jpg"
+                        else "WEBP"
+                    )
+
                     save_kwargs = {
                         "format": save_format,
                         "quality": quality,
                         "optimize": True,
                     }
+
                     if output_format == "jpg":
-                        save_kwargs["dpi"] = (dpi, dpi)
-                    current.save(output_path, **save_kwargs)
-                    actual_size = output_path.stat().st_size
+                        save_kwargs["dpi"] = (
+                            dpi,
+                            dpi,
+                        )
+
+                    current.save(
+                        output_path,
+                        **save_kwargs,
+                    )
+
+                    actual_size = (
+                        output_path.stat().st_size
+                    )
+
                     if actual_size <= target_bytes:
                         return actual_size
+
             else:
-                delete_file(str(output_path))
+
+                delete_file(
+                    str(output_path)
+                )
+
                 current.save(
                     output_path,
                     format="PNG",
                     optimize=True,
                     compress_level=9,
                 )
-                actual_size = output_path.stat().st_size
+
+                actual_size = (
+                    output_path.stat().st_size
+                )
+
                 if actual_size <= target_bytes:
                     return actual_size
 
-            if current.width <= 16 or current.height <= 16:
+            if (
+                current.width <= 16
+                or current.height <= 16
+            ):
                 break
 
             new_size = (
-                max(1, int(current.width * 0.80)),
-                max(1, int(current.height * 0.80)),
+                max(
+                    1,
+                    int(
+                        current.width * 0.80
+                    ),
+                ),
+                max(
+                    1,
+                    int(
+                        current.height * 0.80
+                    ),
+                ),
             )
+
             resized = current.resize(
                 new_size,
                 Image.Resampling.LANCZOS,
             )
+
             if owns_current:
+
                 try:
                     current.close()
+
                 except Exception:
                     pass
+
             current = resized
             owns_current = True
+
             gc.collect()
 
-        delete_file(str(output_path))
+        delete_file(
+            str(output_path)
+        )
+
         raise ValueError(
             "The requested maximum size is too small to produce a valid image. "
             "Please choose a larger target size."
         )
+
     finally:
+
         if owns_current:
+
             try:
                 current.close()
+
             except Exception:
                 pass
+
         gc.collect()
 
 
@@ -488,6 +614,7 @@ def find_libreoffice() -> Optional[str]:
     """
 
     candidates = [
+
         # Linux / Render
         "/usr/bin/soffice",
         "/usr/local/bin/soffice",
@@ -498,6 +625,7 @@ def find_libreoffice() -> Optional[str]:
     ]
 
     for candidate in candidates:
+
         if os.path.exists(candidate):
             return candidate
 
@@ -535,11 +663,15 @@ def resize_for_background_removal(
     new_size = (
         max(
             1,
-            int(image.width * ratio),
+            int(
+                image.width * ratio
+            ),
         ),
         max(
             1,
-            int(image.height * ratio),
+            int(
+                image.height * ratio
+            ),
         ),
     )
 
@@ -582,6 +714,7 @@ def validate_image_upload(
             supported_extensions
         )
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -610,9 +743,8 @@ def validate_pdf_upload(
         content_type != "application/pdf"
         and not filename.endswith(".pdf")
     ):
+
         raise HTTPException(
             status_code=400,
             detail="Please upload a PDF file.",
         )
-
-
