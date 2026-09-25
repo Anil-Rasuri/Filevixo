@@ -37,7 +37,7 @@ export async function imagesToPdf({
   formData.append("margin", margin);
 
   const response = await fetch(
-    "http://127.0.0.1:8000/api/images-to-pdf",
+    `${import.meta.env.VITE_API_URL}/api/images-to-pdf`,
     {
       method: "POST",
       body: formData,

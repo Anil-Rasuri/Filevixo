@@ -36,7 +36,7 @@ const PDFToWord = ({
       formData.append("file", file);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/pdf-to-word",
+       `${import.meta.env.VITE_API_URL}/api/pdf-to-word`,
         {
           method: "POST",
           body: formData,
