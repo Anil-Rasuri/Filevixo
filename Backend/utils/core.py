@@ -134,7 +134,7 @@ try:
     REMOVE_BG_MAX_DIMENSION = int(
         os.getenv(
             "REMOVE_BG_MAX_DIMENSION",
-            "2500",
+            "1500",
         )
     )
 except ValueError:
