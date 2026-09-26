@@ -441,6 +441,70 @@ const tools: ToolDefinition[] = [
 ];
 
 /* =========================================================
+   SEO
+========================================================= */
+
+const seoData: Record<
+  ToolId,
+  {
+    title: string;
+    description: string;
+  }
+> = {
+  compress: {
+    title: "Free Image Compressor Online | Filevixo",
+    description:
+      "Compress images online for free with Filevixo. Reduce image file size while keeping useful image quality.",
+  },
+  convert: {
+    title: "Free Image Converter Online | Filevixo",
+    description:
+      "Convert images online between JPG, PNG, and WEBP formats with Filevixo.",
+  },
+  resize: {
+    title: "Resize Images Online for Free | Filevixo",
+    description:
+      "Resize images online for free with Filevixo. Change image dimensions quickly and easily.",
+  },
+  crop: {
+    title: "Crop Images Online for Free | Filevixo",
+    description:
+      "Crop images online for free with Filevixo. Remove unwanted areas and adjust your image.",
+  },
+  "images-to-pdf": {
+    title: "Convert Images to PDF Online | Filevixo",
+    description:
+      "Convert multiple images into a PDF online with Filevixo.",
+  },
+  "word-to-pdf": {
+    title: "Word to PDF Converter Online | Filevixo",
+    description:
+      "Convert Word documents to PDF online with Filevixo quickly and easily.",
+  },
+  "pdf-to-word": {
+    title: "PDF to Word Converter Online | Filevixo",
+    description:
+      "Convert PDF documents to editable Word files online with Filevixo.",
+  },
+  "remove-background": {
+    title: "Remove Image Background Online | Filevixo",
+    description:
+      "Remove image backgrounds online with Filevixo and create transparent PNG images.",
+  },
+  "merge-pdf": {
+    title: "Merge PDF Files Online | Filevixo",
+    description:
+      "Merge multiple PDF files into one document online with Filevixo.",
+  },
+};
+
+const defaultSeo = {
+  title: "Filevixo - Free Online File & Image Tools",
+  description:
+    "Filevixo is a free online file and image tools platform. Compress, convert, resize and crop images, create and merge PDFs, convert documents, and remove image backgrounds.",
+};
+
+/* =========================================================
    CATEGORY
 ========================================================= */
 
@@ -678,6 +742,96 @@ function App() {
 
   const downloadUrlRef =
     useRef<string | null>(null);
+
+  /* =======================================================
+     SEO
+  ======================================================= */
+
+  useEffect(() => {
+    const routeTool = routeToTool(
+      location.pathname,
+    );
+
+    const seo = routeTool
+      ? seoData[routeTool]
+      : defaultSeo;
+
+    document.title = seo.title;
+
+    const updateMeta = (
+      name: string,
+      content: string,
+      attribute: "name" | "property" = "name",
+    ) => {
+      let meta = document.querySelector(
+        `meta[${attribute}="${name}"]`,
+      ) as HTMLMetaElement | null;
+
+      if (!meta) {
+        meta = document.createElement("meta");
+        meta.setAttribute(attribute, name);
+        document.head.appendChild(meta);
+      }
+
+      meta.setAttribute("content", content);
+    };
+
+    /* Standard SEO description */
+
+    updateMeta(
+      "description",
+      seo.description,
+    );
+
+    /* Open Graph */
+
+    updateMeta(
+      "og:title",
+      seo.title,
+      "property",
+    );
+
+    updateMeta(
+      "og:description",
+      seo.description,
+      "property",
+    );
+
+    updateMeta(
+      "og:type",
+      "website",
+      "property",
+    );
+
+    updateMeta(
+      "og:site_name",
+      "Filevixo",
+      "property",
+    );
+
+    updateMeta(
+      "og:url",
+      `https://filevixo-delta.vercel.app${location.pathname}`,
+      "property",
+    );
+
+    /* Twitter */
+
+    updateMeta(
+      "twitter:card",
+      "summary",
+    );
+
+    updateMeta(
+      "twitter:title",
+      seo.title,
+    );
+
+    updateMeta(
+      "twitter:description",
+      seo.description,
+    );
+  }, [location.pathname]);
 
   /* =======================================================
      CLEANUP
