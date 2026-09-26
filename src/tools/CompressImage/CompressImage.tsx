@@ -24,18 +24,6 @@ const TARGET_OPTIONS = [
   { label: "1 MB", value: 1024 },
 ];
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export default function CompressImage({
   file,
   onResult,
@@ -90,65 +78,6 @@ export default function CompressImage({
 
   return (
     <div className="compress-image">
-      <div className="compress-image-header">
-        <div>
-          <h2 className="compress-image-title">
-            Compress Image
-          </h2>
-
-          <p className="compress-image-description">
-            Reduce your image size while keeping the
-            best possible quality.
-          </p>
-        </div>
-      </div>
-
-      {file && (
-        <div className="compress-file-card">
-          <div className="compress-file-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M6 3.5h8l4 4V20.5H6V3.5Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-              />
-
-              <path
-                d="M14 3.5v4h4"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-              />
-
-              <path
-                d="M8.5 15.5l2.2-2.2 1.7 1.7 1.8-2.1 2.3 2.6"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <div className="compress-file-info">
-            <span className="compress-file-name">
-              {file.name}
-            </span>
-
-            <span className="compress-file-size">
-              Original size: {formatFileSize(file.size)}
-            </span>
-          </div>
-        </div>
-      )}
-
       <div className="compress-settings">
         <div className="compress-settings-heading">
           <div>
@@ -167,7 +96,8 @@ export default function CompressImage({
 
         <div className="compress-target-options">
           {TARGET_OPTIONS.map((option) => {
-            const selected = targetSize === option.value;
+            const selected =
+              targetSize === option.value;
 
             return (
               <button
@@ -177,7 +107,9 @@ export default function CompressImage({
                   "compress-target-button",
                   selected ? "selected" : "",
                 ].join(" ")}
-                onClick={() => setTargetSize(option.value)}
+                onClick={() =>
+                  setTargetSize(option.value)
+                }
                 disabled={loading}
               >
                 {option.label}

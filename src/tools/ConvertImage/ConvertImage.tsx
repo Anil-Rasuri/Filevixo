@@ -46,18 +46,6 @@ const FORMAT_OPTIONS = [
   ...OTHER_FORMATS,
 ];
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export default function ConvertImage({
   file,
   outputFormat,
@@ -85,7 +73,6 @@ export default function ConvertImage({
 
     /*
      * Keep the current format selected when possible.
-     * JPEG files use JPEG as the default output.
      */
     const matchingFormat = FORMAT_OPTIONS.find(
       (format) => format.value === currentExtension,
@@ -143,71 +130,8 @@ export default function ConvertImage({
     }
   };
 
-  const currentExtension =
-    file?.name
-      .split(".")
-      .pop()
-      ?.toUpperCase() || "";
-
   return (
     <div className="convert-image">
-      <div className="convert-image-header">
-        <h2 className="convert-image-title">
-          Convert Image
-        </h2>
-
-        <p className="convert-image-description">
-          Convert your image to different image formats.
-        </p>
-      </div>
-
-      {file && (
-        <div className="convert-file-card">
-          <div className="convert-file-icon">
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M6 3.5h8l4 4V20.5H6V3.5Z"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-              />
-
-              <path
-                d="M14 3.5v4h4"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-              />
-
-              <path
-                d="M8.5 15.5l2.2-2.2 1.7 1.7 1.8-2.1 2.3 2.6"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <div className="convert-file-info">
-            <span className="convert-file-name">
-              {file.name}
-            </span>
-
-            <span className="convert-file-size">
-              {currentExtension} ·{" "}
-              {formatFileSize(file.size)}
-            </span>
-          </div>
-        </div>
-      )}
-
       <div className="convert-settings">
         <div className="convert-settings-heading">
           <div>
