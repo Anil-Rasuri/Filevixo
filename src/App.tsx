@@ -831,6 +831,39 @@ function App() {
       "twitter:description",
       seo.description,
     );
+
+    /* Structured Data */
+
+    const existingSchema =
+      document.getElementById(
+        "filevixo-organization-schema",
+      );
+
+    if (existingSchema) {
+      existingSchema.remove();
+    }
+
+    if (location.pathname === "/") {
+      const schema = document.createElement("script");
+
+      schema.id =
+        "filevixo-organization-schema";
+
+      schema.type =
+        "application/ld+json";
+
+      schema.textContent = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "Filevixo",
+        url: "https://filevixo-delta.vercel.app/",
+        logo: "https://filevixo-delta.vercel.app/onlylogo.png",
+        description:
+          "Filevixo provides free online file and image tools for compressing, converting, resizing, cropping, PDF conversion, PDF merging, and removing image backgrounds.",
+      });
+
+      document.head.appendChild(schema);
+    }
   }, [location.pathname]);
 
   /* =======================================================
