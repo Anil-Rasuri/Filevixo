@@ -4,6 +4,11 @@ import {
   useState,
 } from "react";
 
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
 import "./App.css";
 import "./RemoveBackgroundPreview.css";
 
@@ -331,6 +336,26 @@ const mergeIcon = (
    TOOLS
 ========================================================= */
 
+const toolRoutes: Record<ToolId, string> = {
+  compress: "/file-compressor",
+  convert: "/image-converter",
+  resize: "/image-resizer",
+  crop: "/image-cropper",
+  "images-to-pdf": "/images-to-pdf",
+  "word-to-pdf": "/word-to-pdf",
+  "pdf-to-word": "/pdf-to-word",
+  "remove-background": "/remove-background",
+  "merge-pdf": "/merge-pdf",
+};
+
+const routeToTool = (pathname: string): ToolId | null => {
+  const entry = Object.entries(toolRoutes).find(
+    ([, route]) => route === pathname,
+  );
+
+  return entry ? (entry[0] as ToolId) : null;
+};
+
 const tools: ToolDefinition[] = [
   {
     id: "compress",
@@ -599,8 +624,17 @@ function RemoveBackgroundResultPreview({
 ========================================================= */
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const initialRouteTool = routeToTool(
+    location.pathname,
+  );
+
   const [activeTool, setActiveTool] =
-    useState<ToolId>("compress");
+    useState<ToolId>(
+      initialRouteTool || "compress",
+    );
 
   const [selectedFile, setSelectedFile] =
     useState<File | null>(null);
@@ -701,6 +735,33 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [activeTool, selectedFile]);
+
+  /* =======================================================
+     DIRECT TOOL URL
+  ======================================================= */
+
+  useEffect(() => {
+    const routeTool = routeToTool(
+      location.pathname,
+    );
+
+    if (!routeTool) {
+      return;
+    }
+
+    setActiveTool(routeTool);
+
+    const timer = window.setTimeout(() => {
+      workspaceRef.current?.scrollIntoView({
+        behavior: "auto",
+        block: "start",
+      });
+    }, 50);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [location.pathname]);
 
   /* =======================================================
      NAVBAR ACTIVE SECTION
@@ -818,6 +879,8 @@ function App() {
 
     resetWorkspace(false);
 
+    navigate(toolRoutes[toolId]);
+
     window.setTimeout(() => {
       workspaceRef.current?.scrollIntoView({
         behavior: "smooth",
@@ -919,6 +982,21 @@ function App() {
   ======================================================= */
 
   const scrollToHome = () => {
+    if (location.pathname !== "/") {
+      navigate("/");
+
+      window.setTimeout(() => {
+        document
+          .getElementById("home")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+      }, 50);
+
+      return;
+    }
+
     document
       .getElementById("home")
       ?.scrollIntoView({
@@ -928,6 +1006,21 @@ function App() {
   };
 
   const scrollToTools = () => {
+    if (location.pathname !== "/") {
+      navigate("/");
+
+      window.setTimeout(() => {
+        document
+          .getElementById("tools")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+      }, 50);
+
+      return;
+    }
+
     document
       .getElementById("tools")
       ?.scrollIntoView({
@@ -937,6 +1030,21 @@ function App() {
   };
 
   const scrollToHowItWorks = () => {
+    if (location.pathname !== "/") {
+      navigate("/");
+
+      window.setTimeout(() => {
+        document
+          .getElementById("how-it-works")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+      }, 50);
+
+      return;
+    }
+
     document
       .getElementById("how-it-works")
       ?.scrollIntoView({
