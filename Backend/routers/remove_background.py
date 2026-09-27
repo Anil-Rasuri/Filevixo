@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
@@ -10,9 +11,42 @@ from utils.core import (
     validate_image_upload,
 )
 
+
 router = APIRouter()
 
+
 KNOCKOUT_URL = "https://useknockout--api.modal.run/remove"
+
+
+# Reusable HTTP client.
+# Keeping connections alive avoids creating a new connection
+# to Knockout for every background-removal request.
+KNOCKOUT_CLIENT = None
+
+
+async def get_knockout_client():
+    global KNOCKOUT_CLIENT
+
+    if KNOCKOUT_CLIENT is None:
+        timeout = httpx.Timeout(
+            connect=20.0,
+            read=180.0,
+            write=60.0,
+            pool=20.0,
+        )
+
+        limits = httpx.Limits(
+            max_connections=20,
+            max_keepalive_connections=10,
+            keepalive_expiry=60.0,
+        )
+
+        KNOCKOUT_CLIENT = httpx.AsyncClient(
+            timeout=timeout,
+            limits=limits,
+        )
+
+    return KNOCKOUT_CLIENT
 
 
 @router.post("/api/remove-background")
@@ -66,22 +100,14 @@ async def remove_background(
     }
 
     try:
-        # Knockout can have a cold GPU start, so allow enough time
-        # for the first request after inactivity.
-        timeout = httpx.Timeout(
-            connect=30.0,
-            read=180.0,
-            write=60.0,
-            pool=30.0,
-        )
+        client = await get_knockout_client()
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                KNOCKOUT_URL,
-                headers=headers,
-                files=files,
-                data=form_data,
-            )
+        response = await client.post(
+            KNOCKOUT_URL,
+            headers=headers,
+            files=files,
+            data=form_data,
+        )
 
     except httpx.TimeoutException:
         raise HTTPException(
@@ -115,10 +141,12 @@ async def remove_background(
 
         try:
             error_data = response.json()
+
             error_detail = error_data.get(
                 "detail",
                 "Background removal failed.",
             )
+
         except Exception:
             error_detail = (
                 "Background removal service "

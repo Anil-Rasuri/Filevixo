@@ -11,6 +11,20 @@ router = APIRouter()
 MAX_WORD_TO_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
+# Cache the LibreOffice executable path after the first lookup.
+# This avoids searching for LibreOffice on every conversion request.
+_SOFFICE_PATH = None
+
+
+def get_soffice_path():
+    global _SOFFICE_PATH
+
+    if _SOFFICE_PATH is None:
+        _SOFFICE_PATH = find_libreoffice()
+
+    return _SOFFICE_PATH
+
+
 @router.post("/api/word-to-pdf")
 async def word_to_pdf(
     background_tasks: BackgroundTasks,
@@ -51,9 +65,8 @@ async def word_to_pdf(
 
         # Release uploaded file bytes before starting LibreOffice.
         del data
-        gc.collect()
 
-        soffice_path = find_libreoffice()
+        soffice_path = get_soffice_path()
 
         if not soffice_path:
             raise HTTPException(
@@ -67,36 +80,34 @@ async def word_to_pdf(
 
         profile_uri = lo_profile.resolve().as_uri()
 
-        with HEAVY_OPERATION_LOCK:
-            result = subprocess.run(
-                [
-                    soffice_path,
-                    "--headless",
-                    "--nologo",
-                    "--nodefault",
-                    "--nofirststartwizard",
-                    "--norestore",
-                    "--nolockcheck",
-                    f"-env:UserInstallation={profile_uri}",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    str(temp_dir),
-                    str(input_path),
-                ],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=60,
-            )
+        result = subprocess.run(
+            [
+                soffice_path,
+                "--headless",
+                "--nologo",
+                "--nodefault",
+                "--nofirststartwizard",
+                "--norestore",
+                "--nolockcheck",
+                f"-env:UserInstallation={profile_uri}",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(temp_dir),
+                str(input_path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+        )
 
         stdout = result.stdout.strip()
         stderr = result.stderr.strip()
 
         # Release subprocess output immediately.
         del result
-        gc.collect()
 
         if output_path.exists() is False:
             diagnostic = (
@@ -126,7 +137,6 @@ async def word_to_pdf(
 
     except subprocess.TimeoutExpired:
         delete_directory(temp_dir)
-        gc.collect()
 
         raise HTTPException(
             status_code=504,
@@ -135,17 +145,12 @@ async def word_to_pdf(
 
     except HTTPException:
         delete_directory(temp_dir)
-        gc.collect()
         raise
 
     except Exception as error:
         delete_directory(temp_dir)
-        gc.collect()
 
         raise HTTPException(
             status_code=500,
             detail=f"Word to PDF conversion failed: {error}",
         )
-
-    finally:
-        gc.collect()
