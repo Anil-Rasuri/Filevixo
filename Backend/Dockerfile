@@ -19,8 +19,9 @@ RUN pip install --upgrade pip && \
 
 COPY . .
 
-RUN mkdir -p /app/temp
+RUN mkdir -p /app/temp \
+    /app/temp/libreoffice-profile
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+CMD ["sh", "-c", "soffice --headless --nologo --nodefault --nofirststartwizard --norestore --nolockcheck -env:UserInstallation=file:///app/temp/libreoffice-profile --accept='socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext' >/tmp/libreoffice.log 2>&1 & sleep 2; exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}"]

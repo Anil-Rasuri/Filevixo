@@ -116,6 +116,42 @@ function canvasToBlob(
 }
 
 /*
+ * Add harmless trailing bytes when an encoded image
+ * is smaller than the required minimum.
+ *
+ * This does NOT change:
+ * - width
+ * - height
+ * - image pixels
+ * - image quality
+ *
+ * It only makes the returned file larger than 50 KB.
+ */
+function padBlobToMinimumSize(
+  blob: Blob,
+  minimumBytes: number,
+): Blob {
+  if (blob.size > minimumBytes) {
+    return blob;
+  }
+
+  const paddingSize =
+    minimumBytes -
+    blob.size +
+    1024;
+
+  const padding =
+    new Uint8Array(paddingSize);
+
+  return new Blob(
+    [blob, padding],
+    {
+      type: blob.type,
+    },
+  );
+}
+
+/*
  * Find the highest possible quality that stays
  * within the selected maximum file size.
  */
@@ -181,12 +217,10 @@ async function findBestQuality(
 }
 
 /*
- * Try to produce an output above the 50 KB minimum.
+ * Try to produce an output above the 50 KB minimum
+ * by changing quality only.
  *
- * We increase JPEG/WebP quality first.
- * If the image is still too small, we slightly
- * increase the canvas dimensions while staying
- * inside the user's requested dimensions.
+ * Dimensions are NOT changed here.
  */
 async function findMinimumSizeBlob(
   canvas: HTMLCanvasElement,
@@ -195,13 +229,10 @@ async function findMinimumSizeBlob(
   maximumBytes: number,
 ): Promise<Blob> {
   if (mimeType === "image/png") {
-    const pngBlob =
-      await canvasToBlob(
-        canvas,
-        mimeType,
-      );
-
-    return pngBlob;
+    return canvasToBlob(
+      canvas,
+      mimeType,
+    );
   }
 
   let low = 0.05;
@@ -210,11 +241,7 @@ async function findMinimumSizeBlob(
   let bestAboveMinimum: Blob | null =
     null;
 
-  /*
-   * First find a quality that gives us
-   * something above 50 KB.
-   */
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 8; i++) {
     const quality =
       (low + high) / 2;
 
@@ -240,32 +267,16 @@ async function findMinimumSizeBlob(
     }
   }
 
-  /*
-   * If quality adjustment found a valid result,
-   * use the largest valid one.
-   */
   if (bestAboveMinimum) {
     return bestAboveMinimum;
   }
 
-  /*
-   * Check maximum quality directly.
-   */
   const maximumQualityBlob =
     await canvasToBlob(
       canvas,
       mimeType,
       1,
     );
-
-  if (
-    maximumQualityBlob.size >=
-      minimumBytes &&
-    maximumQualityBlob.size <=
-      maximumBytes
-  ) {
-    return maximumQualityBlob;
-  }
 
   return maximumQualityBlob;
 }
@@ -284,10 +295,10 @@ async function resizeInBrowser(
     await loadImage(file);
 
   try {
-    let width =
+    const width =
       Math.round(options.width);
 
-    let height =
+    const height =
       Math.round(options.height);
 
     const minimumBytes =
@@ -302,60 +313,53 @@ async function resizeInBrowser(
     canvas.width = width;
     canvas.height = height;
 
-    const drawImage = () => {
-      const context =
-        canvas.getContext("2d");
+    const context =
+      canvas.getContext("2d");
 
-      if (!context) {
-        throw new Error(
-          "Your browser could not create a canvas.",
-        );
-      }
+    if (!context) {
+      throw new Error(
+        "Your browser could not create a canvas.",
+      );
+    }
 
+    context.imageSmoothingEnabled =
+      true;
+
+    context.imageSmoothingQuality =
+      "high";
+
+    if (
+      outputFormat === "jpg" ||
+      outputFormat === "jpeg"
+    ) {
+      context.fillStyle =
+        "#ffffff";
+
+      context.fillRect(
+        0,
+        0,
+        width,
+        height,
+      );
+    } else {
       context.clearRect(
         0,
         0,
-        canvas.width,
-        canvas.height,
+        width,
+        height,
       );
+    }
 
-      context.imageSmoothingEnabled =
-        true;
-
-      context.imageSmoothingQuality =
-        "high";
-
-      if (
-        outputFormat === "jpg" ||
-        outputFormat === "jpeg"
-      ) {
-        context.fillStyle =
-          "#ffffff";
-
-        context.fillRect(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
-      }
-
-      context.drawImage(
-        image,
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      );
-    };
-
-    drawImage();
+    context.drawImage(
+      image,
+      0,
+      0,
+      width,
+      height,
+    );
 
     /*
-     * Start with the highest quality.
-     *
-     * This is important because a small image
-     * can naturally be less than 50 KB.
+     * First create the image at maximum quality.
      */
     let resultBlob =
       await canvasToBlob(
@@ -365,8 +369,8 @@ async function resizeInBrowser(
       );
 
     /*
-     * If the result is above the maximum,
-     * reduce JPEG/WebP quality.
+     * If it is already within the selected
+     * maximum size, keep it.
      */
     if (
       resultBlob.size >
@@ -381,12 +385,12 @@ async function resizeInBrowser(
     }
 
     /*
-     * If the result is below 50 KB, try to
-     * increase quality first.
+     * If quality adjustment produced a file
+     * below 50 KB, try to increase quality.
      */
     if (
       resultBlob.size <
-      minimumBytes &&
+        minimumBytes &&
       mimeType !== "image/png"
     ) {
       resultBlob =
@@ -399,49 +403,36 @@ async function resizeInBrowser(
     }
 
     /*
-     * If quality cannot reach 50 KB,
-     * slightly increase the actual output
-     * dimensions while staying reasonable.
+     * IMPORTANT:
      *
-     * This is mainly for very small images.
+     * Do NOT increase the user's requested
+     * width or height.
+     *
+     * If the image naturally ends up below
+     * 50 KB, simply pad the file.
      */
-    let attempts = 0;
-
-    while (
+    if (
       resultBlob.size <
-        minimumBytes &&
-      attempts < 5 &&
-      mimeType !== "image/png"
+        minimumBytes
     ) {
-      attempts++;
-
-      width = Math.min(
-        MAX_DIMENSION,
-        Math.round(width * 1.15),
-      );
-
-      height = Math.min(
-        MAX_DIMENSION,
-        Math.round(height * 1.15),
-      );
-
-      canvas.width = width;
-      canvas.height = height;
-
-      drawImage();
-
       resultBlob =
-        await findMinimumSizeBlob(
-          canvas,
-          mimeType,
+        padBlobToMinimumSize(
+          resultBlob,
           minimumBytes,
-          maximumBytes,
         );
+    }
 
+    /*
+     * Final maximum-size check.
+     */
+    if (
+      resultBlob.size >
+      maximumBytes
+    ) {
       /*
-       * If increasing dimensions pushed the
-       * image above the maximum, go back to
-       * quality-based compression.
+       * If padding somehow pushed the file
+       * over the selected limit, use the
+       * highest quality result that fits.
        */
       if (
         resultBlob.size >
@@ -454,18 +445,41 @@ async function resizeInBrowser(
             maximumBytes,
           );
       }
+
+      /*
+       * If the image is naturally below 50 KB
+       * after quality compression, pad it again.
+       */
+      if (
+        resultBlob.size <
+        minimumBytes
+      ) {
+        resultBlob =
+          padBlobToMinimumSize(
+            resultBlob,
+            minimumBytes,
+          );
+      }
     }
 
     /*
      * Final validation.
      */
+    if (!resultBlob.size) {
+      throw new Error(
+        "The browser returned an empty image.",
+      );
+    }
+
     if (
       resultBlob.size <=
       minimumBytes
     ) {
-      throw new Error(
-        `The resized image is ${(resultBlob.size / 1024).toFixed(1)} KB. The output must be above 50 KB. Try increasing the dimensions.`,
-      );
+      resultBlob =
+        padBlobToMinimumSize(
+          resultBlob,
+          minimumBytes,
+        );
     }
 
     if (
@@ -474,12 +488,6 @@ async function resizeInBrowser(
     ) {
       throw new Error(
         `The resized image is ${(resultBlob.size / 1024).toFixed(1)} KB, which is above your ${options.maxFileSize} KB limit.`,
-      );
-    }
-
-    if (!resultBlob.size) {
-      throw new Error(
-        "The browser returned an empty image.",
       );
     }
 
@@ -587,7 +595,7 @@ async function resizeOnServer(
     throw new Error(message);
   }
 
-  const blob =
+  let blob =
     await response.blob();
 
   if (!blob.size) {
@@ -602,13 +610,20 @@ async function resizeOnServer(
   const maximumBytes =
     maxSizeKB * 1024;
 
+  /*
+   * If the server returns something below
+   * 50 KB, fix the file here instead of
+   * showing an error to the user.
+   */
   if (
     blob.size <=
     minimumBytes
   ) {
-    throw new Error(
-      `The resized image is ${(blob.size / 1024).toFixed(1)} KB. The output must be above 50 KB.`,
-    );
+    blob =
+      padBlobToMinimumSize(
+        blob,
+        minimumBytes,
+      );
   }
 
   if (
@@ -700,8 +715,8 @@ export async function resizeImage(
   }
 
   /*
-   * Fast browser processing for the formats
-   * browsers can reliably encode.
+   * Fast browser processing for JPG,
+   * JPEG, PNG and WEBP.
    */
   if (
     BROWSER_FORMATS.includes(
@@ -715,7 +730,8 @@ export async function resizeImage(
   }
 
   /*
-   * Other formats continue using the backend.
+   * Other formats continue using
+   * the backend.
    */
   return resizeOnServer(
     file,
