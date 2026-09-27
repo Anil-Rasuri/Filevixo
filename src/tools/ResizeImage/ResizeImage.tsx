@@ -37,7 +37,7 @@ const FORMAT_OPTIONS = [
 ];
 
 type DimensionUnit = "px" | "in" | "cm" | "mm";
-type SizeUnit = "KB" | "MB";
+type SizeUnit = "KB";
 
 const DIMENSION_UNITS: {
   value: DimensionUnit;
@@ -115,41 +115,27 @@ const ResizeImage = ({
   const previewImageRef =
     useRef<HTMLImageElement | null>(null);
 
-  /*
-   * Used to automatically scroll the page
-   * to the Preview + Settings workspace
-   * after an image is selected.
-   */
   const resizeWorkspaceRef =
     useRef<HTMLDivElement | null>(null);
 
-  const [width, setWidth] =
-    useState("");
-
-  const [height, setHeight] =
-    useState("");
+  const [width, setWidth] = useState("");
+  const [height, setHeight] = useState("");
 
   const [dimensionUnit, setDimensionUnit] =
     useState<DimensionUnit>("px");
 
-  const [dpi, setDpi] =
-    useState("96");
+  const [dpi, setDpi] = useState("96");
 
   const [outputFormat, setOutputFormat] =
     useState("jpg");
 
   const [maxFileSize, setMaxFileSize] =
-    useState("");
+    useState("100");
 
-  const [sizeUnit, setSizeUnit] =
-    useState<SizeUnit>("KB");
+  const sizeUnit: SizeUnit = "KB";
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [previewReady, setPreviewReady] =
     useState(false);
 
@@ -165,10 +151,6 @@ const ResizeImage = ({
   const [previewHeight, setPreviewHeight] =
     useState<number | null>(null);
 
-  /*
-   * Convert entered dimensions into
-   * actual pixels.
-   */
   const dimensionToPixels = (
     value: string,
     unit: DimensionUnit,
@@ -195,20 +177,15 @@ const ResizeImage = ({
 
     if (unit === "cm") {
       return Math.round(
-        (numericValue / 2.54) *
-          currentDpi,
+        (numericValue / 2.54) * currentDpi,
       );
     }
 
     return Math.round(
-      (numericValue / 25.4) *
-        currentDpi,
+      (numericValue / 25.4) * currentDpi,
     );
   };
 
-  /*
-   * Live preview dimensions.
-   */
   useEffect(() => {
     const currentDpi = Number(dpi);
 
@@ -218,19 +195,17 @@ const ResizeImage = ({
         ? currentDpi
         : 96;
 
-    const widthPixels =
-      dimensionToPixels(
-        width,
-        dimensionUnit,
-        safeDpi,
-      );
+    const widthPixels = dimensionToPixels(
+      width,
+      dimensionUnit,
+      safeDpi,
+    );
 
-    const heightPixels =
-      dimensionToPixels(
-        height,
-        dimensionUnit,
-        safeDpi,
-      );
+    const heightPixels = dimensionToPixels(
+      height,
+      dimensionUnit,
+      safeDpi,
+    );
 
     if (
       widthPixels > 0 &&
@@ -251,9 +226,6 @@ const ResizeImage = ({
     dpi,
   ]);
 
-  /*
-   * Load selected image.
-   */
   useEffect(() => {
     setError("");
     setLoading(false);
@@ -265,8 +237,7 @@ const ResizeImage = ({
       setDimensionUnit("px");
       setDpi("96");
       setOutputFormat("jpg");
-      setMaxFileSize("");
-      setSizeUnit("KB");
+      setMaxFileSize("100");
 
       setOriginalWidth(null);
       setOriginalHeight(null);
@@ -296,33 +267,37 @@ const ResizeImage = ({
 
       setDimensionUnit("px");
 
-      setWidth(
-        String(imageWidth),
-      );
-
-      setHeight(
-        String(imageHeight),
-      );
+      setWidth(String(imageWidth));
+      setHeight(String(imageHeight));
 
       setDpi("96");
 
-      previewImageRef.current =
-        image;
+      const currentExtension =
+        file.name
+          .split(".")
+          .pop()
+          ?.toLowerCase();
+
+      const matchingFormat =
+        FORMAT_OPTIONS.find(
+          (format) =>
+            format.value === currentExtension,
+        );
+
+      if (matchingFormat) {
+        setOutputFormat(
+          matchingFormat.value,
+        );
+      } else {
+        setOutputFormat("jpg");
+      }
+
+      previewImageRef.current = image;
 
       setPreviewReady(true);
 
       URL.revokeObjectURL(imageUrl);
 
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT use scrollIntoView().
-       *
-       * We calculate an exact scroll position
-       * so the Preview + Settings section
-       * appears near the top of the viewport,
-       * like the reference screenshot.
-       */
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const workspace =
@@ -334,15 +309,8 @@ const ResizeImage = ({
 
           const workspaceTop =
             workspace.getBoundingClientRect()
-              .top +
-            window.scrollY;
+              .top + window.scrollY;
 
-          /*
-           * This controls where the workspace
-           * lands on screen.
-           *
-           * Navbar + small top spacing.
-           */
           const targetTop =
             workspaceTop - 175;
 
@@ -359,7 +327,6 @@ const ResizeImage = ({
 
     image.onerror = () => {
       setPreviewReady(false);
-
       URL.revokeObjectURL(imageUrl);
     };
 
@@ -370,12 +337,6 @@ const ResizeImage = ({
     };
   }, [file]);
 
-  /*
-   * Draw live preview.
-   *
-   * Width and height are completely
-   * independent. No aspect-ratio lock.
-   */
   useEffect(() => {
     const canvas =
       previewCanvasRef.current;
@@ -441,10 +402,6 @@ const ResizeImage = ({
     previewReady,
   ]);
 
-  /*
-   * Change px/in/cm/mm without changing
-   * the actual pixel dimensions.
-   */
   const handleDimensionUnitChange = (
     newUnit: DimensionUnit,
   ) => {
@@ -497,9 +454,6 @@ const ResizeImage = ({
     setDimensionUnit(newUnit);
   };
 
-  /*
-   * Resize image.
-   */
   const handleResize = async () => {
     if (!file) {
       const message =
@@ -566,23 +520,14 @@ const ResizeImage = ({
       return;
     }
 
-    const targetMaxFileSize =
-      maxFileSize.trim() === ""
-        ? undefined
-        : Number(maxFileSize);
+    const targetMaxFileSize = Number(maxFileSize);
 
     if (
-      targetMaxFileSize !==
-        undefined &&
-      (
-        !Number.isFinite(
-          targetMaxFileSize,
-        ) ||
-        targetMaxFileSize <= 0
-      )
+      !Number.isFinite(targetMaxFileSize) ||
+      ![100, 200].includes(targetMaxFileSize)
     ) {
       const message =
-        "Please enter a valid maximum file size.";
+        "Please select a maximum file size of 100 KB or 200 KB.";
 
       setError(message);
       onError?.(message);
@@ -624,18 +569,11 @@ const ResizeImage = ({
 
   return (
     <div className="resize-image">
-
       <div
         ref={resizeWorkspaceRef}
         className="resize-image-layout"
       >
-
-        {/* ==================================================
-            LEFT — PREVIEW
-        ================================================== */}
-
         <div className="resize-preview-panel">
-
           <div className="resize-preview-heading">
             <div>
               <h3>Preview</h3>
@@ -647,10 +585,8 @@ const ResizeImage = ({
           </div>
 
           <div className="resize-preview-area">
-
             {!file ? (
               <div className="resize-preview-empty">
-
                 <svg
                   width="42"
                   height="42"
@@ -679,26 +615,21 @@ const ResizeImage = ({
                 <span>
                   Select an image to preview
                 </span>
-
               </div>
             ) : (
               <div className="resize-canvas-wrapper">
-
                 <canvas
                   ref={previewCanvasRef}
                   className="resize-preview-canvas"
                 />
-
               </div>
             )}
-
           </div>
 
           {file &&
             originalWidth &&
             originalHeight && (
               <div className="resize-preview-info">
-
                 <div>
                   <span>Original</span>
 
@@ -728,37 +659,24 @@ const ResizeImage = ({
                     )}
                   </strong>
                 </div>
-
               </div>
             )}
-
         </div>
 
-        {/* ==================================================
-            RIGHT — SETTINGS
-        ================================================== */}
-
         <div className="resize-settings">
-
           <div className="resize-image-header">
-
             <div>
-              <h3>
-                Resize Image
-              </h3>
+              <h3>Resize Image</h3>
 
               <p>
                 Set dimensions, format, DPI and file size.
               </p>
             </div>
-
           </div>
 
           {file && (
             <div className="resize-file-info">
-
               <div className="resize-file-icon">
-
                 <svg
                   width="22"
                   height="22"
@@ -783,11 +701,9 @@ const ResizeImage = ({
 
                   <path d="M21 15l-5-5L5 21" />
                 </svg>
-
               </div>
 
               <div className="resize-file-details">
-
                 <strong>
                   {file.name}
                 </strong>
@@ -796,22 +712,14 @@ const ResizeImage = ({
                   {originalWidth} ×{" "}
                   {originalHeight}px
                 </span>
-
               </div>
-
             </div>
           )}
 
-          {/* DIMENSIONS */}
-
           <div className="resize-section">
-
             <div className="resize-section-heading">
-
               <div>
-                <h4>
-                  Dimensions
-                </h4>
+                <h4>Dimensions</h4>
 
                 <p>
                   Width and height are independent.
@@ -840,19 +748,15 @@ const ResizeImage = ({
                   ),
                 )}
               </select>
-
             </div>
 
             <div className="resize-fields">
-
               <div className="resize-field">
-
                 <label htmlFor="resize-width">
                   Width
                 </label>
 
                 <div className="resize-input-wrapper">
-
                   <input
                     id="resize-width"
                     type="number"
@@ -870,19 +774,15 @@ const ResizeImage = ({
                   <span>
                     {dimensionUnit}
                   </span>
-
                 </div>
-
               </div>
 
               <div className="resize-field">
-
                 <label htmlFor="resize-height">
                   Height
                 </label>
 
                 <div className="resize-input-wrapper">
-
                   <input
                     id="resize-height"
                     type="number"
@@ -900,21 +800,13 @@ const ResizeImage = ({
                   <span>
                     {dimensionUnit}
                   </span>
-
                 </div>
-
               </div>
-
             </div>
-
           </div>
 
-          {/* DPI */}
-
           <div className="resize-section">
-
             <div className="resize-section-heading">
-
               <div>
                 <h4>DPI</h4>
 
@@ -922,42 +814,28 @@ const ResizeImage = ({
                   Used when converting inches, cm or mm to pixels.
                 </p>
               </div>
-
             </div>
 
             <div className="resize-input-wrapper">
-
               <input
                 type="number"
                 min="1"
                 max="1200"
                 value={dpi}
                 onChange={(e) =>
-                  setDpi(
-                    e.target.value,
-                  )
+                  setDpi(e.target.value)
                 }
                 disabled={loading}
               />
 
-              <span>
-                DPI
-              </span>
-
+              <span>DPI</span>
             </div>
-
           </div>
 
-          {/* OUTPUT FORMAT */}
-
           <div className="resize-section">
-
             <div className="resize-section-heading">
-
               <div>
-                <h4>
-                  Output format
-                </h4>
+                <h4>Output format</h4>
 
                 <p>
                   Choose the output image format.
@@ -967,20 +845,35 @@ const ResizeImage = ({
               <span className="resize-selected-format">
                 {outputFormat.toUpperCase()}
               </span>
-
             </div>
 
             <div className="resize-format-options">
-
               {FORMAT_OPTIONS.map(
                 (format, index) => {
-
                   const selected =
                     outputFormat ===
                     format.value;
 
                   const isPrimary =
                     index < 4;
+
+                  const currentExtension =
+                    file?.name
+                      .split(".")
+                      .pop()
+                      ?.toLowerCase();
+
+                  const sameFormat =
+                    currentExtension ===
+                      format.value ||
+                    (
+                      currentExtension === "jpg" &&
+                      format.value === "jpeg"
+                    ) ||
+                    (
+                      currentExtension === "jpeg" &&
+                      format.value === "jpg"
+                    );
 
                   return (
                     <button
@@ -1001,83 +894,53 @@ const ResizeImage = ({
                         )
                       }
                       disabled={loading}
+                      aria-pressed={selected}
                     >
-                      {format.label}
+                      <span className="resize-format-name">
+                        {format.label}
+                      </span>
+
+                      {sameFormat && (
+                        <span className="resize-current-badge">
+                          Current
+                        </span>
+                      )}
                     </button>
                   );
                 },
               )}
-
             </div>
-
           </div>
 
-          {/* MAX FILE SIZE */}
-
           <div className="resize-section">
-
             <div className="resize-section-heading">
-
               <div>
-                <h4>
-                  Maximum file size
-                </h4>
+                <h4>Maximum file size</h4>
 
                 <p>
-                  Optional output size limit.
+                  Output will be at least 50 KB and will not exceed the selected limit.
                 </p>
               </div>
-
             </div>
 
             <div className="resize-max-size-row">
-
-              <div className="resize-input-wrapper">
-
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={maxFileSize}
-                  onChange={(e) =>
-                    setMaxFileSize(
-                      e.target.value,
-                    )
-                  }
-                  placeholder="Maximum size"
-                  disabled={loading}
-                />
-
-              </div>
-
               <select
-                value={sizeUnit}
+                value={maxFileSize}
                 onChange={(e) =>
-                  setSizeUnit(
-                    e.target.value as SizeUnit,
-                  )
+                  setMaxFileSize(e.target.value)
                 }
                 disabled={loading}
-                className="resize-unit-select"
+                aria-label="Maximum file size"
+                className="resize-dimension-unit"
               >
-                <option value="KB">
-                  KB
-                </option>
-
-                <option value="MB">
-                  MB
-                </option>
+                <option value="100">100 KB</option>
+                <option value="200">200 KB</option>
               </select>
-
             </div>
-
           </div>
-
-          {/* ERROR */}
 
           {error && (
             <div className="resize-error">
-
               <svg
                 width="18"
                 height="18"
@@ -1096,14 +959,9 @@ const ResizeImage = ({
                 <path d="M12 16h.01" />
               </svg>
 
-              <span>
-                {error}
-              </span>
-
+              <span>{error}</span>
             </div>
           )}
-
-          {/* RESIZE BUTTON */}
 
           <button
             type="button"
@@ -1116,7 +974,6 @@ const ResizeImage = ({
             {loading ? (
               <>
                 <span className="resize-spinner" />
-
                 Resizing...
               </>
             ) : (
@@ -1131,13 +988,10 @@ const ResizeImage = ({
                 >
                   <path d="M8 3H3v5" />
                   <path d="M3 3l7 7" />
-
                   <path d="M16 21h5v-5" />
                   <path d="M21 21l-7-7" />
-
                   <path d="M21 8V3h-5" />
                   <path d="M21 3l-7 7" />
-
                   <path d="M3 16v5h5" />
                   <path d="M3 21l7-7" />
                 </svg>
@@ -1146,11 +1000,8 @@ const ResizeImage = ({
               </>
             )}
           </button>
-
         </div>
-
       </div>
-
     </div>
   );
 };

@@ -2,15 +2,13 @@ const API_BASE_URL =
   import.meta.env.VITE_API_URL ||
   "http://localhost:8000";
 
-export type ResizeSizeUnit =
-  | "KB"
-  | "MB";
+export type ResizeSizeUnit = "KB";
 
 export interface ResizeImageOptions {
   width: number;
   height: number;
   outputFormat: string;
-  maxFileSize?: number;
+  maxFileSize: number;
   sizeUnit?: ResizeSizeUnit;
 }
 
@@ -35,36 +33,29 @@ const ALLOWED_FORMATS = [
   "svg",
 ];
 
+const MIN_OUTPUT_KB = 50;
+const ALLOWED_MAX_SIZES_KB = [100, 200];
+
 export async function resizeImage(
   file: File,
   options: ResizeImageOptions,
 ): Promise<ResizeImageResult> {
   if (!file) {
-    throw new Error(
-      "No image selected.",
-    );
+    throw new Error("No image selected.");
   }
 
   if (
-    !Number.isFinite(
-      options.width,
-    ) ||
+    !Number.isFinite(options.width) ||
     options.width <= 0
   ) {
-    throw new Error(
-      "Invalid width.",
-    );
+    throw new Error("Invalid width.");
   }
 
   if (
-    !Number.isFinite(
-      options.height,
-    ) ||
+    !Number.isFinite(options.height) ||
     options.height <= 0
   ) {
-    throw new Error(
-      "Invalid height.",
-    );
+    throw new Error("Invalid height.");
   }
 
   if (
@@ -79,141 +70,63 @@ export async function resizeImage(
   const outputFormat =
     options.outputFormat.toLowerCase();
 
-  if (
-    !ALLOWED_FORMATS.includes(
-      outputFormat,
-    )
-  ) {
+  if (!ALLOWED_FORMATS.includes(outputFormat)) {
     throw new Error(
       `Unsupported output format: ${outputFormat}`,
     );
   }
 
-  let maxSizeKB:
-    | number
-    | undefined;
+  const maxSizeKB = Number(options.maxFileSize);
 
-  if (
-    options.maxFileSize !==
-    undefined
-  ) {
-    if (
-      !Number.isFinite(
-        options.maxFileSize,
-      ) ||
-      options.maxFileSize <= 0
-    ) {
-      throw new Error(
-        "Invalid maximum file size.",
-      );
-    }
-
-    if (
-      options.sizeUnit === "MB"
-    ) {
-      maxSizeKB =
-        options.maxFileSize * 1024;
-    } else {
-      maxSizeKB =
-        options.maxFileSize;
-    }
+  if (!ALLOWED_MAX_SIZES_KB.includes(maxSizeKB)) {
+    throw new Error(
+      "Maximum file size must be either 100 KB or 200 KB.",
+    );
   }
 
-  const formData =
-    new FormData();
+  const formData = new FormData();
 
-  formData.append(
-    "file",
-    file,
-  );
-
+  formData.append("file", file);
   formData.append(
     "width",
-    String(
-      Math.round(
-        options.width,
-      ),
-    ),
+    String(Math.round(options.width)),
   );
-
   formData.append(
     "height",
-    String(
-      Math.round(
-        options.height,
-      ),
-    ),
+    String(Math.round(options.height)),
   );
+  formData.append("output_format", outputFormat);
+  formData.append("unit", "px");
+  formData.append("maintain_aspect", "false");
+  formData.append("max_size_kb", String(maxSizeKB));
 
-  formData.append(
-    "output_format",
-    outputFormat,
+  const response = await fetch(
+    `${API_BASE_URL}/api/resize-image`,
+    {
+      method: "POST",
+      body: formData,
+    },
   );
-
-  formData.append(
-    "unit",
-    "px",
-  );
-
-  /*
-   * Always use independent
-   * width and height.
-   */
-  formData.append(
-    "maintain_aspect",
-    "false",
-  );
-
-  if (
-    maxSizeKB !== undefined
-  ) {
-    formData.append(
-      "max_size_kb",
-      String(maxSizeKB),
-    );
-  }
-
-  const response =
-    await fetch(
-      `${API_BASE_URL}/api/resize-image`,
-      {
-        method: "POST",
-        body: formData,
-      },
-    );
 
   if (!response.ok) {
-    let message =
-      "Image resizing failed.";
+    let message = "Image resizing failed.";
 
     try {
-      const data =
-        await response.json();
+      const data = await response.json();
 
-      if (
-        typeof data?.detail ===
-        "string"
-      ) {
-        message =
-          data.detail;
-      } else if (
-        typeof data?.message ===
-        "string"
-      ) {
-        message =
-          data.message;
+      if (typeof data?.detail === "string") {
+        message = data.detail;
+      } else if (typeof data?.message === "string") {
+        message = data.message;
       }
     } catch {
       // Keep default error.
     }
 
-    throw new Error(
-      message,
-    );
+    throw new Error(message);
   }
 
-  const blob =
-    await response.blob();
+  const blob = await response.blob();
 
   if (!blob.size) {
     throw new Error(
@@ -221,37 +134,26 @@ export async function resizeImage(
     );
   }
 
-  /*
-   * Client-side final file-size check.
-   */
-  if (
-    maxSizeKB !== undefined
-  ) {
-    const maxBytes =
-      maxSizeKB * 1024;
+  const minBytes = MIN_OUTPUT_KB * 1024;
+  const maxBytes = maxSizeKB * 1024;
 
-    if (
-      blob.size > maxBytes
-    ) {
-      throw new Error(
-        `The resized image is ${(
-          blob.size / 1024
-        ).toFixed(
-          1,
-        )} KB, which is above your ${maxSizeKB.toFixed(
-          1,
-        )} KB limit.`,
-      );
-    }
+  if (blob.size < minBytes) {
+    throw new Error(
+      `The resized image is ${(blob.size / 1024).toFixed(1)} KB, which is below the 50 KB minimum.`,
+    );
   }
 
-  const url =
-    URL.createObjectURL(blob);
+  if (blob.size > maxBytes) {
+    throw new Error(
+      `The resized image is ${(blob.size / 1024).toFixed(1)} KB, which is above your ${maxSizeKB} KB limit.`,
+    );
+  }
+
+  const url = URL.createObjectURL(blob);
 
   return {
     url,
-    name:
-      `filevixo-resized.${outputFormat}`,
+    name: `filevixo-resized.${outputFormat}`,
     size: blob.size,
   };
 }

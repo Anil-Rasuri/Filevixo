@@ -13,16 +13,198 @@ import ReactCrop, {
 } from "react-image-crop";
 
 import "react-image-crop/dist/ReactCrop.css";
-
-import {
-  createCropFileName,
-  createCroppedBlobWithMaxSize,
-  downloadBlob,
-  formatFileSize,
-  getCropOutputFormat,
-} from "./cropImage";
-
 import "./CropImage.css";
+
+function getCropOutputFormat(file: File): string {
+  const extension =
+    file.name
+      .split(".")
+      .pop()
+      ?.toLowerCase() || "png";
+
+  if (extension === "jpg" || extension === "jpeg") {
+    return extension;
+  }
+
+  if (extension === "png" || extension === "webp") {
+    return extension;
+  }
+
+  // Browser canvas can reliably export these formats.
+  // Unsupported source formats fall back to PNG.
+  return "png";
+}
+
+function createCropFileName(
+  originalName: string,
+  outputFormat: string,
+): string {
+  const baseName =
+    originalName.replace(/\.[^/.]+$/, "") ||
+    "filevixo-image";
+
+  return `${baseName}-cropped.${outputFormat}`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function downloadBlob(
+  blob: Blob,
+  fileName: string,
+): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = fileName;
+  link.style.display = "none";
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+function loadImageFromFile(
+  file: File,
+): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Unable to read the selected image."));
+    };
+
+    image.src = url;
+  });
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  outputFormat: string,
+  quality = 0.92,
+): Promise<Blob> {
+  const mimeType =
+    outputFormat === "jpg" || outputFormat === "jpeg"
+      ? "image/jpeg"
+      : outputFormat === "webp"
+        ? "image/webp"
+        : "image/png";
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob || blob.size <= 0) {
+          reject(new Error("Unable to create the cropped image."));
+          return;
+        }
+
+        resolve(blob);
+      },
+      mimeType,
+      mimeType === "image/png" ? undefined : quality,
+    );
+  });
+}
+
+async function createCroppedBlobWithMaxSize(
+  image: HTMLImageElement,
+  crop: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  },
+  outputFormat: string,
+  maxFileSizeKB: number,
+): Promise<Blob> {
+  const maxBytes = maxFileSizeKB * 1024;
+
+  let width = Math.max(1, Math.round(crop.width));
+  let height = Math.max(1, Math.round(crop.height));
+  const x = Math.max(0, Math.round(crop.x));
+  const y = Math.max(0, Math.round(crop.y));
+
+  width = Math.min(width, image.naturalWidth - x);
+  height = Math.min(height, image.naturalHeight - y);
+
+  if (width <= 0 || height <= 0) {
+    throw new Error("Please select a valid crop area.");
+  }
+
+  let quality = 0.92;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Your browser could not create the crop canvas.");
+    }
+
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.clearRect(0, 0, width, height);
+
+    context.drawImage(
+      image,
+      x,
+      y,
+      width,
+      height,
+      0,
+      0,
+      width,
+      height,
+    );
+
+    const blob = await canvasToBlob(
+      canvas,
+      outputFormat,
+      quality,
+    );
+
+    if (blob.size <= maxBytes) {
+      return blob;
+    }
+
+    // Only resize if the safety limit is actually exceeded.
+    // This keeps normal crops fast and preserves their dimensions.
+    if (outputFormat === "jpg" || outputFormat === "jpeg" || outputFormat === "webp") {
+      quality = Math.max(0.45, quality - 0.12);
+    } else {
+      width = Math.max(1, Math.floor(width * 0.82));
+      height = Math.max(1, Math.floor(height * 0.82));
+    }
+  }
+
+  throw new Error(
+    "The cropped image is larger than the maximum allowed file size.",
+  );
+}
 
 interface CropImageProps {
   file: File | null;
@@ -170,6 +352,9 @@ export default function CropImage({
   const [crop, setCrop] =
     useState<Crop>();
 
+  const cropRef =
+    useRef<Crop | undefined>(undefined);
+
   const [
     completedCrop,
     setCompletedCrop,
@@ -237,6 +422,8 @@ export default function CropImage({
       URL.createObjectURL(file);
 
     objectUrlRef.current = url;
+
+    imageRef.current = null;
 
     setImageUrl(url);
 
@@ -322,9 +509,13 @@ export default function CropImage({
             image.naturalHeight,
         });
 
-        setCrop(
-          getInitialCrop(),
-        );
+        const initialCrop =
+          getInitialCrop();
+
+        cropRef.current =
+          initialCrop;
+
+        setCrop(initialCrop);
 
         setCompletedCrop(null);
         setCropFileSize(null);
@@ -365,12 +556,16 @@ export default function CropImage({
         customWidth /
         customHeight;
 
-      setCrop(
+      const nextCrop =
         createAspectCrop(
           image,
           aspect,
-        ),
-      );
+        );
+
+      cropRef.current =
+        nextCrop;
+
+      setCrop(nextCrop);
 
       return;
     }
@@ -388,12 +583,16 @@ export default function CropImage({
       return;
     }
 
-    setCrop(
+    const nextCrop =
       createAspectCrop(
         image,
         selected.ratio,
-      ),
-    );
+      );
+
+    cropRef.current =
+      nextCrop;
+
+    setCrop(nextCrop);
   };
 
   /*
@@ -439,13 +638,17 @@ export default function CropImage({
         return;
       }
 
-      setCrop(
+      const nextCrop =
         createAspectCrop(
           image,
           safeWidth /
             safeHeight,
-        ),
-      );
+        );
+
+      cropRef.current =
+        nextCrop;
+
+      setCrop(nextCrop);
     };
 
   /*
@@ -454,6 +657,7 @@ export default function CropImage({
   const handleCropChange = (
     newCrop: Crop,
   ) => {
+    cropRef.current = newCrop;
     setCrop(newCrop);
     setCropFileSize(null);
   };
@@ -486,9 +690,13 @@ export default function CropImage({
       "free",
     );
 
-    setCrop(
-      getInitialCrop(),
-    );
+    const nextCrop =
+      getInitialCrop();
+
+    cropRef.current =
+      nextCrop;
+
+    setCrop(nextCrop);
 
     setCompletedCrop(null);
     setCropFileSize(null);
@@ -510,13 +718,15 @@ export default function CropImage({
 
   /*
    * Apply + Download.
+   *
+   * Export from the exact crop state currently shown by ReactCrop.
+   * ReactCrop keeps the selected crop in either percentage or pixel
+   * coordinates depending on the crop unit, so we convert that state
+   * directly to the selected file's natural pixel dimensions.
    */
   const handleApplyDownload =
     async () => {
-      if (
-        !file ||
-        !imageRef.current
-      ) {
+      if (!file || !imageRef.current) {
         setError(
           "Please select an image first.",
         );
@@ -524,12 +734,13 @@ export default function CropImage({
         return;
       }
 
+      const currentCrop =
+        cropRef.current || crop;
+
       if (
-        !completedCrop ||
-        completedCrop.width <=
-          0 ||
-        completedCrop.height <=
-          0
+        !currentCrop ||
+        currentCrop.width <= 0 ||
+        currentCrop.height <= 0
       ) {
         setError(
           "Please select a valid crop area.",
@@ -542,24 +753,124 @@ export default function CropImage({
       setError("");
 
       try {
+        // Read the exact file selected by UploadBox.
+        const sourceImage =
+          await loadImageFromFile(file);
+
+        const displayImage =
+          imageRef.current;
+
+        const displayedRect =
+          displayImage.getBoundingClientRect();
+
+        if (
+          displayedRect.width <= 0 ||
+          displayedRect.height <= 0
+        ) {
+          throw new Error(
+            "Unable to determine the crop area.",
+          );
+        }
+
+        let naturalX: number;
+        let naturalY: number;
+        let naturalWidth: number;
+        let naturalHeight: number;
+
+        if (currentCrop.unit === "%") {
+          naturalX = Math.round(
+            (currentCrop.x / 100) *
+              sourceImage.naturalWidth,
+          );
+
+          naturalY = Math.round(
+            (currentCrop.y / 100) *
+              sourceImage.naturalHeight,
+          );
+
+          naturalWidth = Math.round(
+            (currentCrop.width / 100) *
+              sourceImage.naturalWidth,
+          );
+
+          naturalHeight = Math.round(
+            (currentCrop.height / 100) *
+              sourceImage.naturalHeight,
+          );
+        } else {
+          const scaleX =
+            sourceImage.naturalWidth /
+            displayedRect.width;
+
+          const scaleY =
+            sourceImage.naturalHeight /
+            displayedRect.height;
+
+          naturalX = Math.round(
+            currentCrop.x * scaleX,
+          );
+
+          naturalY = Math.round(
+            currentCrop.y * scaleY,
+          );
+
+          naturalWidth = Math.round(
+            currentCrop.width * scaleX,
+          );
+
+          naturalHeight = Math.round(
+            currentCrop.height * scaleY,
+          );
+        }
+
+        naturalX = Math.max(
+          0,
+          Math.min(
+            naturalX,
+            sourceImage.naturalWidth - 1,
+          ),
+        );
+
+        naturalY = Math.max(
+          0,
+          Math.min(
+            naturalY,
+            sourceImage.naturalHeight - 1,
+          ),
+        );
+
+        naturalWidth = Math.max(
+          1,
+          Math.min(
+            naturalWidth,
+            sourceImage.naturalWidth - naturalX,
+          ),
+        );
+
+        naturalHeight = Math.max(
+          1,
+          Math.min(
+            naturalHeight,
+            sourceImage.naturalHeight - naturalY,
+          ),
+        );
+
         const blob =
           await createCroppedBlobWithMaxSize(
-            imageRef.current,
+            sourceImage,
             {
-              x: completedCrop.x,
-              y: completedCrop.y,
-              width:
-                completedCrop.width,
-              height:
-                completedCrop.height,
+              x: naturalX,
+              y: naturalY,
+              width: naturalWidth,
+              height: naturalHeight,
             },
             outputFormat,
             MAX_FILE_SIZE_KB,
           );
 
-        setCropFileSize(
-          blob.size,
-        );
+        sourceImage.src = "";
+
+        setCropFileSize(blob.size);
 
         const fileName =
           createCropFileName(
@@ -579,9 +890,7 @@ export default function CropImage({
 
         setError(message);
       } finally {
-        setIsProcessing(
-          false,
-        );
+        setIsProcessing(false);
       }
     };
 
@@ -899,7 +1208,7 @@ export default function CropImage({
                 isProcessing
               }
             >
-              Cancel
+              Start over
             </button>
 
             <button
