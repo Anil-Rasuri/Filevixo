@@ -6,23 +6,219 @@ from utils.core import *
 router = APIRouter()
 
 
-# Word files can cause LibreOffice to use significant RAM.
+# Word files can use significant RAM during conversion.
 # Keep this operation below the general 25 MB upload limit.
 MAX_WORD_TO_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-# Cache the LibreOffice executable path after the first lookup.
-# This avoids searching for LibreOffice on every conversion request.
-_SOFFICE_PATH = None
+# Persistent LibreOffice UNO server.
+LIBREOFFICE_HOST = "127.0.0.1"
+LIBREOFFICE_PORT = 2002
+
+
+# A single LibreOffice instance is shared by the backend.
+# Serialize conversions to keep memory usage predictable on Render Free.
+WORD_TO_PDF_LOCK = threading.Lock()
+
+
+# Python script executed by Debian's system Python.
+#
+# python3-uno is installed for the system Python, so we deliberately
+# use /usr/bin/python3 instead of the application's Python environment.
+UNO_CONVERSION_SCRIPT = r"""
+import sys
+import time
+from pathlib import Path
+
+import uno
+
+
+INPUT_PATH = Path(sys.argv[1]).resolve()
+OUTPUT_PATH = Path(sys.argv[2]).resolve()
+HOST = sys.argv[3]
+PORT = sys.argv[4]
+
+
+def make_property(name, value):
+    prop = uno.createUnoStruct("com.sun.star.beans.PropertyValue")
+    prop.Name = name
+    prop.Value = value
+    return prop
+
+
+def file_url(path):
+    return uno.systemPathToFileUrl(str(path))
+
+
+# Connect to the already-running LibreOffice process.
+local_context = uno.getComponentContext()
+
+resolver = local_context.ServiceManager.createInstanceWithContext(
+    "com.sun.star.bridge.UnoUrlResolver",
+    local_context,
+)
+
+connection_url = (
+    f"uno:socket,host={HOST},port={PORT};"
+    "urp;StarOffice.ComponentContext"
+)
+
+
+remote_context = None
+
+last_error = None
+
+for _ in range(30):
+    try:
+        remote_context = resolver.resolve(connection_url)
+        break
+    except Exception as error:
+        last_error = error
+        time.sleep(0.5)
+
+
+if remote_context is None:
+    raise RuntimeError(
+        f"Unable to connect to LibreOffice: {last_error}"
+    )
+
+
+service_manager = remote_context.ServiceManager
+
+desktop = service_manager.createInstanceWithContext(
+    "com.sun.star.frame.Desktop",
+    remote_context,
+)
+
+
+input_url = file_url(INPUT_PATH)
+output_url = file_url(OUTPUT_PATH)
+
+
+load_properties = (
+    make_property("Hidden", True),
+    make_property("ReadOnly", True),
+    make_property(
+        "UpdateDocMode",
+        3,
+    ),
+)
+
+
+document = None
+
+try:
+    document = desktop.loadComponentFromURL(
+        input_url,
+        "_blank",
+        0,
+        load_properties,
+    )
+
+    if document is None:
+        raise RuntimeError(
+            "LibreOffice could not open the Word document."
+        )
+
+    export_properties = (
+        make_property(
+            "FilterName",
+            "writer_pdf_Export",
+        ),
+        make_property(
+            "Overwrite",
+            True,
+        ),
+    )
+
+    document.storeToURL(
+        output_url,
+        export_properties,
+    )
+
+finally:
+    if document is not None:
+        try:
+            document.close(True)
+        except Exception:
+            try:
+                document.dispose()
+            except Exception:
+                pass
+
+
+if not OUTPUT_PATH.exists():
+    raise RuntimeError(
+        "LibreOffice did not create the PDF output."
+    )
+
+print("PDF_CREATED")
+"""
 
 
 def get_soffice_path():
-    global _SOFFICE_PATH
+    """
+    Kept for compatibility with the existing project utilities.
 
-    if _SOFFICE_PATH is None:
-        _SOFFICE_PATH = find_libreoffice()
+    The new implementation does not launch soffice for each request.
+    LibreOffice is started once by Docker and accessed through UNO.
+    """
+    return find_libreoffice()
 
-    return _SOFFICE_PATH
+
+def convert_word_with_uno(
+    input_path: Path,
+    output_path: Path,
+):
+    """
+    Convert a Word document using the persistent LibreOffice UNO server.
+
+    This function intentionally uses Debian's system Python because
+    python3-uno is installed for that Python environment.
+    """
+
+    result = subprocess.run(
+        [
+            "/usr/bin/python3",
+            "-c",
+            UNO_CONVERSION_SCRIPT,
+            str(input_path),
+            str(output_path),
+            LIBREOFFICE_HOST,
+            str(LIBREOFFICE_PORT),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=60,
+    )
+
+    stdout = result.stdout.strip()
+    stderr = result.stderr.strip()
+
+    if result.returncode != 0:
+        diagnostic = (
+            stderr
+            or stdout
+            or "LibreOffice UNO conversion failed."
+        )
+
+        raise RuntimeError(
+            f"LibreOffice conversion failed. Details: {diagnostic}"
+        )
+
+    if not output_path.exists():
+        diagnostic = (
+            stderr
+            or stdout
+            or "LibreOffice produced no PDF output."
+        )
+
+        raise RuntimeError(
+            f"LibreOffice did not create the PDF output. "
+            f"Details: {diagnostic}"
+        )
 
 
 @router.post("/api/word-to-pdf")
@@ -57,71 +253,23 @@ async def word_to_pdf(
     )
 
     safe_filename = Path(file.filename).name
+
     input_path = temp_dir / safe_filename
     output_path = temp_dir / f"{input_path.stem}.pdf"
 
     try:
         input_path.write_bytes(data)
 
-        # Release uploaded file bytes before starting LibreOffice.
+        # Release uploaded bytes before conversion.
         del data
 
-        soffice_path = get_soffice_path()
-
-        if not soffice_path:
-            raise HTTPException(
-                status_code=500,
-                detail="LibreOffice is not installed on the server.",
-            )
-
-        # Use a unique LibreOffice profile for this conversion.
-        lo_profile = temp_dir / "lo-profile"
-        lo_profile.mkdir(parents=True, exist_ok=True)
-
-        profile_uri = lo_profile.resolve().as_uri()
-
-        result = subprocess.run(
-            [
-                soffice_path,
-                "--headless",
-                "--nologo",
-                "--nodefault",
-                "--nofirststartwizard",
-                "--norestore",
-                "--nolockcheck",
-                f"-env:UserInstallation={profile_uri}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(temp_dir),
-                str(input_path),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=60,
-        )
-
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
-
-        # Release subprocess output immediately.
-        del result
-
-        if output_path.exists() is False:
-            diagnostic = (
-                stderr
-                or stdout
-                or "LibreOffice produced no output."
-            )
-
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "LibreOffice did not create the PDF output. "
-                    f"Details: {diagnostic}"
-                ),
+        # LibreOffice is shared by the backend.
+        # Serialize conversions to avoid excessive memory usage.
+        with WORD_TO_PDF_LOCK:
+            await asyncio.to_thread(
+                convert_word_with_uno,
+                input_path,
+                output_path,
             )
 
         background_tasks.add_task(
