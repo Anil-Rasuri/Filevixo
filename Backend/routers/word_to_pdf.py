@@ -6,12 +6,13 @@ from utils.core import *
 router = APIRouter()
 
 
+# Word files can cause LibreOffice to use significant RAM.
+# Keep this operation below the general 25 MB upload limit.
 MAX_WORD_TO_PDF_SIZE = 10 * 1024 * 1024  # 10 MB
 
-# Persistent LibreOffice instance started by Docker.
-LIBREOFFICE_HOST = "127.0.0.1"
-LIBREOFFICE_PORT = 2002
 
+# Cache the LibreOffice executable path after the first lookup.
+# This avoids searching for LibreOffice on every conversion request.
 _SOFFICE_PATH = None
 
 
@@ -22,51 +23,6 @@ def get_soffice_path():
         _SOFFICE_PATH = find_libreoffice()
 
     return _SOFFICE_PATH
-
-
-def convert_with_warm_libreoffice(
-    soffice_path: str,
-    input_path: Path,
-    output_dir: Path,
-):
-    """
-    Use the already-running LibreOffice instance.
-
-    The Docker container starts LibreOffice once.
-    This function only launches the lightweight
-    conversion command.
-    """
-
-    result = subprocess.run(
-        [
-            soffice_path,
-            "--headless",
-            "--nologo",
-            "--nodefault",
-            "--nofirststartwizard",
-            "--norestore",
-            "--nolockcheck",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-            str(output_dir),
-            str(input_path),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=60,
-    )
-
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
-
-    return_code = result.returncode
-
-    del result
-
-    return return_code, stdout, stderr
 
 
 @router.post("/api/word-to-pdf")
@@ -80,9 +36,7 @@ async def word_to_pdf(
             detail="No file selected.",
         )
 
-    extension = Path(
-        file.filename
-    ).suffix.lower()
+    extension = Path(file.filename).suffix.lower()
 
     if extension not in {".doc", ".docx"}:
         raise HTTPException(
@@ -102,20 +56,14 @@ async def word_to_pdf(
         )
     )
 
-    safe_filename = Path(
-        file.filename
-    ).name
-
+    safe_filename = Path(file.filename).name
     input_path = temp_dir / safe_filename
-
-    output_path = (
-        temp_dir /
-        f"{input_path.stem}.pdf"
-    )
+    output_path = temp_dir / f"{input_path.stem}.pdf"
 
     try:
         input_path.write_bytes(data)
 
+        # Release uploaded file bytes before starting LibreOffice.
         del data
 
         soffice_path = get_soffice_path()
@@ -126,18 +74,42 @@ async def word_to_pdf(
                 detail="LibreOffice is not installed on the server.",
             )
 
-        return_code, stdout, stderr = (
-            convert_with_warm_libreoffice(
+        # Use a unique LibreOffice profile for this conversion.
+        lo_profile = temp_dir / "lo-profile"
+        lo_profile.mkdir(parents=True, exist_ok=True)
+
+        profile_uri = lo_profile.resolve().as_uri()
+
+        result = subprocess.run(
+            [
                 soffice_path,
-                input_path,
-                temp_dir,
-            )
+                "--headless",
+                "--nologo",
+                "--nodefault",
+                "--nofirststartwizard",
+                "--norestore",
+                "--nolockcheck",
+                f"-env:UserInstallation={profile_uri}",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(temp_dir),
+                str(input_path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
         )
 
-        if (
-            return_code != 0
-            or not output_path.exists()
-        ):
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+
+        # Release subprocess output immediately.
+        del result
+
+        if output_path.exists() is False:
             diagnostic = (
                 stderr
                 or stdout
@@ -160,9 +132,7 @@ async def word_to_pdf(
         return FileResponse(
             path=output_path,
             media_type="application/pdf",
-            filename=(
-                f"{input_path.stem}.pdf"
-            ),
+            filename=f"{input_path.stem}.pdf",
         )
 
     except subprocess.TimeoutExpired:
@@ -182,7 +152,5 @@ async def word_to_pdf(
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Word to PDF conversion failed: {error}"
-            ),
+            detail=f"Word to PDF conversion failed: {error}",
         )
