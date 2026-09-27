@@ -4,6 +4,11 @@ import {
   useState,
 } from "react";
 
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+
 import "./App.css";
 import "./RemoveBackgroundPreview.css";
 
@@ -38,6 +43,91 @@ type ToolId =
   | "pdf-to-word"
   | "remove-background"
   | "merge-pdf";
+
+const TOOL_PATHS: Record<ToolId, string> = {
+  compress: "/file-compressor",
+  convert: "/image-converter",
+  resize: "/image-resizer",
+  crop: "/image-cropper",
+  "images-to-pdf": "/images-to-pdf",
+  "word-to-pdf": "/word-to-pdf",
+  "pdf-to-word": "/pdf-to-word",
+  "remove-background": "/remove-background",
+  "merge-pdf": "/merge-pdf",
+};
+
+const PATH_TO_TOOL: Record<string, ToolId> = {
+  "/file-compressor": "compress",
+  "/image-converter": "convert",
+  "/image-resizer": "resize",
+  "/image-cropper": "crop",
+  "/images-to-pdf": "images-to-pdf",
+  "/word-to-pdf": "word-to-pdf",
+  "/pdf-to-word": "pdf-to-word",
+  "/remove-background": "remove-background",
+  "/merge-pdf": "merge-pdf",
+};
+
+function getToolFromPath(pathname: string): ToolId {
+  return PATH_TO_TOOL[pathname] || "compress";
+}
+
+const SEO_DATA: Record<
+  ToolId,
+  { title: string; description: string }
+> = {
+  compress: {
+    title: "Compress Image Online – Filevixo",
+    description:
+      "Compress images online for free with Filevixo while keeping useful quality.",
+  },
+  convert: {
+    title: "Convert Image Online – Filevixo",
+    description:
+      "Convert images online between JPG, PNG, and WEBP with Filevixo.",
+  },
+  resize: {
+    title: "Resize Image Online – Filevixo",
+    description:
+      "Resize images online to your required dimensions with Filevixo.",
+  },
+  crop: {
+    title: "Crop Image Online – Filevixo",
+    description:
+      "Crop images online quickly and easily with Filevixo.",
+  },
+  "images-to-pdf": {
+    title: "Images to PDF Converter – Filevixo",
+    description:
+      "Convert images to PDF online quickly and easily with Filevixo.",
+  },
+  "word-to-pdf": {
+    title: "Word to PDF Converter – Filevixo",
+    description:
+      "Convert Word documents to PDF online quickly and easily with Filevixo.",
+  },
+  "pdf-to-word": {
+    title: "PDF to Word Converter – Filevixo",
+    description:
+      "Convert PDF documents to editable Word files online with Filevixo.",
+  },
+  "remove-background": {
+    title: "Remove Background Online – Filevixo",
+    description:
+      "Remove image backgrounds online and create transparent PNG images with Filevixo.",
+  },
+  "merge-pdf": {
+    title: "Merge PDF Online – Filevixo",
+    description:
+      "Merge multiple PDF files into one document online with Filevixo.",
+  },
+};
+
+const DEFAULT_SEO = {
+  title: "Filevixo – Free Online File & Image Tools",
+  description:
+    "Free online tools to compress, convert, resize, crop, and work with images, PDFs, and documents.",
+};
 
 type ToolCategory =
   | "Image Tools"
@@ -599,8 +689,13 @@ function RemoveBackgroundResultPreview({
 ========================================================= */
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [activeTool, setActiveTool] =
-    useState<ToolId>("compress");
+    useState<ToolId>(() =>
+      getToolFromPath(window.location.pathname),
+    );
 
   const [selectedFile, setSelectedFile] =
     useState<File | null>(null);
@@ -772,6 +867,112 @@ function App() {
   }, []);
 
   /* =======================================================
+     ROUTE + SEO
+  ======================================================= */
+
+  useEffect(() => {
+    const toolFromUrl = getToolFromPath(
+      location.pathname,
+    );
+
+    if (toolFromUrl !== activeTool) {
+      setActiveTool(toolFromUrl);
+      resetWorkspace(false);
+    }
+
+    if (location.pathname !== "/") {
+      window.setTimeout(() => {
+        workspaceRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const isHome = location.pathname === "/";
+    const seo = isHome
+      ? DEFAULT_SEO
+      : SEO_DATA[activeTool];
+    const url = `${window.location.origin}${location.pathname}`;
+
+    document.title = seo.title;
+
+    const setMeta = (
+      selector: string,
+      attributes: Record<string, string>,
+      content: string,
+    ) => {
+      let element = document.head.querySelector(
+        selector,
+      ) as HTMLMetaElement | null;
+
+      if (!element) {
+        element = document.createElement("meta");
+
+        Object.entries(attributes).forEach(
+          ([key, value]) => {
+            element?.setAttribute(key, value);
+          },
+        );
+
+        document.head.appendChild(element);
+      }
+
+      element.setAttribute("content", content);
+    };
+
+    setMeta(
+      'meta[name="description"]',
+      { name: "description" },
+      seo.description,
+    );
+
+    setMeta(
+      'meta[property="og:title"]',
+      { property: "og:title" },
+      seo.title,
+    );
+
+    setMeta(
+      'meta[property="og:description"]',
+      { property: "og:description" },
+      seo.description,
+    );
+
+    setMeta(
+      'meta[property="og:url"]',
+      { property: "og:url" },
+      url,
+    );
+
+    setMeta(
+      'meta[name="twitter:title"]',
+      { name: "twitter:title" },
+      seo.title,
+    );
+
+    setMeta(
+      'meta[name="twitter:description"]',
+      { name: "twitter:description" },
+      seo.description,
+    );
+
+    let canonical = document.head.querySelector(
+      'link[rel="canonical"]',
+    ) as HTMLLinkElement | null;
+
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.setAttribute("rel", "canonical");
+      document.head.appendChild(canonical);
+    }
+
+    canonical.setAttribute("href", url);
+  }, [location.pathname, activeTool]);
+
+  /* =======================================================
      RESET
   ======================================================= */
 
@@ -814,16 +1015,8 @@ function App() {
   ======================================================= */
 
   const chooseTool = (toolId: ToolId) => {
-    setActiveTool(toolId);
-
     resetWorkspace(false);
-
-    window.setTimeout(() => {
-      workspaceRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 50);
+    navigate(TOOL_PATHS[toolId]);
   };
 
   /* =======================================================
@@ -1015,9 +1208,6 @@ function App() {
         return (
           <CropImage
             {...commonProps}
-            onCancel={() =>
-              resetWorkspace()
-            }
           />
         );
 
