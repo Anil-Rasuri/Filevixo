@@ -1,20 +1,155 @@
+import asyncio
 from fastapi import APIRouter
 
 from utils.core import *
+
+import zipfile
+from xml.sax.saxutils import escape
 
 
 router = APIRouter()
 
 
-# PDF-to-Word upload limit.
 MAX_PDF_TO_WORD_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-# PyMuPDF is used for fast PDF text extraction.
 try:
     import fitz
 except ImportError:
     fitz = None
+
+
+def build_fast_docx(
+    pages: list[str],
+    output_path: Path,
+):
+    """
+    Build a minimal DOCX directly.
+
+    This avoids the overhead of constructing a large python-docx
+    object tree and is optimized for fast text-based conversion.
+    """
+
+    document_xml_parts = [
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+        "<w:body>",
+    ]
+
+    for page_index, page_text in enumerate(pages):
+        if page_text:
+            lines = page_text.splitlines()
+
+            document_xml_parts.append("<w:p>")
+
+            for line_index, line in enumerate(lines):
+                if line:
+                    document_xml_parts.append(
+                        "<w:r><w:t xml:space=\"preserve\">"
+                        + escape(line)
+                        + "</w:t></w:r>"
+                    )
+
+                if line_index < len(lines) - 1:
+                    document_xml_parts.append(
+                        '<w:r><w:br/></w:r>'
+                    )
+
+            document_xml_parts.append("</w:p>")
+
+        if page_index < len(pages) - 1:
+            document_xml_parts.append(
+                '<w:p><w:r><w:br w:type="page"/></w:r></w:p>'
+            )
+
+    document_xml_parts.extend(
+        [
+            "<w:sectPr>",
+            '<w:pgSz w:w="12240" w:h="15840"/>',
+            '<w:pgMar w:top="1440" w:right="1440" '
+            'w:bottom="1440" w:left="1440" '
+            'w:header="720" w:footer="720" w:gutter="0"/>',
+            "</w:sectPr>",
+            "</w:body>",
+            "</w:document>",
+        ]
+    )
+
+    document_xml = "".join(document_xml_parts)
+
+    content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+</Types>"""
+
+    relationships = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1"
+Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+Target="word/document.xml"/>
+</Relationships>"""
+
+    styles = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal">
+<w:name w:val="Normal"/>
+<w:rPr>
+<w:sz w:val="22"/>
+</w:rPr>
+</w:style>
+</w:styles>"""
+
+    settings = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:zoom w:percent="100"/>
+</w:settings>"""
+
+    with zipfile.ZipFile(
+        output_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=1,
+    ) as docx:
+        docx.writestr(
+            "[Content_Types].xml",
+            content_types,
+        )
+
+        docx.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1"
+Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+Target="word/document.xml"/>
+</Relationships>""",
+        )
+
+        docx.writestr(
+            "word/document.xml",
+            document_xml,
+        )
+
+        docx.writestr(
+            "word/styles.xml",
+            styles,
+        )
+
+        docx.writestr(
+            "word/settings.xml",
+            settings,
+        )
+
+        docx.writestr(
+            "word/_rels/document.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+</Relationships>""",
+        )
 
 
 def convert_pdf_to_word(
@@ -22,10 +157,7 @@ def convert_pdf_to_word(
     output_path: Path,
 ):
     """
-    Convert PDF text to DOCX using PyMuPDF.
-
-    This keeps the existing text-based PDF -> Word behavior while
-    using PyMuPDF for faster PDF parsing and text extraction.
+    Fast text-based PDF -> DOCX conversion using PyMuPDF.
     """
 
     if fitz is None:
@@ -33,49 +165,36 @@ def convert_pdf_to_word(
             "PyMuPDF is not installed."
         )
 
-    if Document is None:
-        raise RuntimeError(
-            "python-docx is not installed."
-        )
-
     pdf_document = None
-    document = None
 
     try:
-        # Open PDF with PyMuPDF.
-        pdf_document = fitz.open(str(input_path))
+        pdf_document = fitz.open(
+            str(input_path)
+        )
 
-        # Check for password protection.
         if pdf_document.needs_pass:
             raise ValueError(
                 "Password-protected PDFs are not supported."
             )
 
-        document = Document()
+        pages = []
 
-        page_count = len(pdf_document)
+        for page in pdf_document:
+            text = page.get_text(
+                "text",
+                sort=False,
+            )
 
-        for page_number in range(page_count):
-            page = pdf_document.load_page(page_number)
+            pages.append(
+                text.strip()
+            )
 
-            # PyMuPDF text extraction.
-            text = page.get_text("text") or ""
-            text = text.strip()
-
-            if text:
-                # Keep the page's extracted line structure while
-                # avoiding one DOCX paragraph per line.
-                document.add_paragraph(text)
-
-            if page_number < page_count - 1:
-                document.add_page_break()
-
-        document.save(str(output_path))
+        build_fast_docx(
+            pages,
+            output_path,
+        )
 
     finally:
-        if document is not None:
-            del document
-
         if pdf_document is not None:
             pdf_document.close()
 
@@ -91,9 +210,7 @@ async def pdf_to_word(
             detail="No file selected.",
         )
 
-    extension = Path(file.filename).suffix.lower()
-
-    if extension != ".pdf":
+    if Path(file.filename).suffix.lower() != ".pdf":
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are supported.",
@@ -105,13 +222,6 @@ async def pdf_to_word(
             detail="PyMuPDF is not installed.",
         )
 
-    if Document is None:
-        raise HTTPException(
-            status_code=500,
-            detail="python-docx is not installed.",
-        )
-
-    # Read and validate the uploaded PDF.
     data = await read_uploaded_bytes(
         file,
         MAX_PDF_TO_WORD_SIZE,
@@ -130,11 +240,8 @@ async def pdf_to_word(
     try:
         input_path.write_bytes(data)
 
-        # Release uploaded bytes immediately.
         del data
 
-        # PDF parsing and DOCX generation are blocking operations.
-        # Run them outside FastAPI's main event loop.
         await asyncio.to_thread(
             convert_pdf_to_word,
             input_path,
@@ -147,7 +254,9 @@ async def pdf_to_word(
                 detail="Word document could not be created.",
             )
 
-        original_name = Path(file.filename).stem
+        original_name = Path(
+            file.filename
+        ).stem
 
         background_tasks.add_task(
             delete_directory,
