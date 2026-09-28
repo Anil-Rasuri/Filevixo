@@ -17,7 +17,7 @@ export default function Navbar({
     <header className="navbar">
       <div className="navbar-inner">
 
-        {/* BRAND */}
+        {/* BRAND / HOME */}
 
         <button
           type="button"
@@ -41,21 +41,7 @@ export default function Navbar({
           <button
             type="button"
             className={`navbar-link ${
-              activeSection === "home"
-                ? "active"
-                : ""
-            }`}
-            onClick={onHomeClick}
-          >
-            Home
-          </button>
-
-          <button
-            type="button"
-            className={`navbar-link ${
-              activeSection === "tools"
-                ? "active"
-                : ""
+              activeSection === "tools" ? "active" : ""
             }`}
             onClick={onToolsClick}
           >
@@ -65,9 +51,7 @@ export default function Navbar({
           <button
             type="button"
             className={`navbar-link ${
-              activeSection === "how-it-works"
-                ? "active"
-                : ""
+              activeSection === "how-it-works" ? "active" : ""
             }`}
             onClick={onHowItWorksClick}
           >
@@ -82,7 +66,7 @@ export default function Navbar({
           className="navbar-cta"
           onClick={onToolsClick}
         >
-          Get started
+          <span>Get started</span>
 
           <svg
             viewBox="0 0 20 20"

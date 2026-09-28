@@ -21,12 +21,15 @@
 .navbar-inner {
   display: flex;
   align-items: center;
+
   width: 100%;
   max-width: 1160px;
   height: 100%;
-  margin: 0 150px;
-  padding: 0 5px;
+
+  margin: 0 auto;
+  padding: 0 20px;
 }
+
 
 /* =========================================================
    BRAND
@@ -35,6 +38,7 @@
 .navbar-brand {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
 
   width: auto;
   height: 100%;
@@ -46,6 +50,8 @@
   background: transparent;
 
   cursor: pointer;
+
+  flex-shrink: 0;
 }
 
 .navbar-logo {
@@ -66,6 +72,7 @@
   opacity: 0.94;
 }
 
+
 /* =========================================================
    NAVIGATION
 ========================================================= */
@@ -73,10 +80,11 @@
 .navbar-nav {
   display: flex;
   align-items: center;
+
   gap: 4px;
 
   margin-left: auto;
-  margin-right: 22px;
+  margin-right: 18px;
 }
 
 .navbar-link {
@@ -117,6 +125,7 @@
   background: #eff6ff;
 }
 
+
 /* =========================================================
    CTA
 ========================================================= */
@@ -125,6 +134,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+
   gap: 7px;
 
   min-height: 38px;
@@ -140,7 +150,11 @@
   font-size: 12px;
   font-weight: 700;
 
+  white-space: nowrap;
+
   cursor: pointer;
+
+  flex-shrink: 0;
 
   box-shadow:
     0 4px 10px rgba(37, 99, 235, 0.16);
@@ -171,27 +185,34 @@
   transform: translateY(0);
 }
 
+
 /* =========================================================
    TABLET
 ========================================================= */
 
 @media (max-width: 900px) {
   .navbar-inner {
-    padding: 0 20px;
+    padding: 0 18px;
   }
 
   .navbar-logo {
-    width: 136px;
+    width: 132px;
   }
 
   .navbar-nav {
-    margin-right: 14px;
+    margin-right: 12px;
   }
 
   .navbar-link {
-    padding: 0 10px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .navbar-cta {
+    padding: 0 12px;
   }
 }
+
 
 /* =========================================================
    MOBILE
@@ -199,58 +220,122 @@
 
 @media (max-width: 640px) {
   .navbar {
-    height: 60px;
+    height: 56px;
   }
 
   .navbar-inner {
-    padding: 0 16px;
+    width: 100%;
+    max-width: 100%;
+
+    margin: 0;
+    padding: 0 10px;
+
+    gap: 0;
+
+    overflow: hidden;
   }
+
+  /* Smaller mobile logo */
 
   .navbar-logo {
-    width: 124px;
+    width: 96px;
+    height: auto;
   }
+
+  .navbar-brand {
+    flex: 0 0 auto;
+  }
+
+  /* Navigation stays visible */
 
   .navbar-nav {
-    gap: 2px;
+    display: flex;
+    align-items: center;
+
+    gap: 1px;
+
     margin-left: auto;
-    margin-right: 0;
-  }
+    margin-right: 5px;
 
-  /* Hide Home on mobile */
-
-  .navbar-link:first-child {
-    display: none;
+    min-width: 0;
   }
 
   .navbar-link {
-    min-height: 34px;
-    padding: 0 9px;
+    min-height: 32px;
 
-    font-size: 11px;
+    padding: 0 7px;
+
+    border-radius: 7px;
+
+    font-size: 10.5px;
+    font-weight: 650;
   }
 
-  /* Hide CTA on mobile */
+  /* Get Started stays visible */
 
   .navbar-cta {
-    display: none;
+    display: inline-flex;
+
+    min-height: 32px;
+
+    padding: 0 8px;
+
+    gap: 3px;
+
+    border-radius: 7px;
+
+    font-size: 9.5px;
+
+    box-shadow:
+      0 3px 8px rgba(37, 99, 235, 0.14);
+  }
+
+  .navbar-cta svg {
+    width: 13px;
+    height: 13px;
   }
 }
+
 
 /* =========================================================
    SMALL MOBILE
 ========================================================= */
 
 @media (max-width: 380px) {
+  .navbar {
+    height: 54px;
+  }
+
   .navbar-inner {
-    padding: 0 13px;
+    padding: 0 8px;
   }
 
   .navbar-logo {
-    width: 116px;
+    width: 88px;
+  }
+
+  .navbar-nav {
+    margin-right: 3px;
   }
 
   .navbar-link {
-    padding: 0 7px;
-    font-size: 10.5px;
+    min-height: 30px;
+
+    padding: 0 5px;
+
+    font-size: 9.5px;
+  }
+
+  .navbar-cta {
+    min-height: 30px;
+
+    padding: 0 6px;
+
+    font-size: 9px;
+  }
+
+  .navbar-cta svg {
+    width: 12px;
+    height: 12px;
   }
 }
