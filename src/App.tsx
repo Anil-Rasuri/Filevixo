@@ -545,6 +545,7 @@ function ToolCategory({
             icon={tool.icon}
             active={activeTool === tool.id}
             accent={tool.color}
+            href={TOOL_PATHS[tool.id]}
             onClick={() => onSelect(tool.id)}
           />
         ))}

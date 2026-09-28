@@ -6,6 +6,7 @@ export interface ToolCardProps {
   icon: React.ReactNode;
   active?: boolean;
   accent?: "blue" | "violet" | "emerald" | "orange";
+  href?: string;
   onClick: () => void;
 }
 
@@ -15,20 +16,19 @@ export default function ToolCard({
   icon,
   active = false,
   accent = "blue",
+  href,
   onClick,
 }: ToolCardProps) {
-  return (
-    <button
-      type="button"
-      className={[
-        "tool-card",
-        `tool-card-${accent}`,
-        active ? "active" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      onClick={onClick}
-    >
+  const className = [
+    "tool-card",
+    `tool-card-${accent}`,
+    active ? "active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const content = (
+    <>
       <span className="tool-card-icon" aria-hidden="true">
         {icon}
       </span>
@@ -57,6 +57,28 @@ export default function ToolCard({
           />
         </svg>
       </span>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        className={className}
+        onClick={onClick}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={onClick}
+    >
+      {content}
     </button>
   );
 }
